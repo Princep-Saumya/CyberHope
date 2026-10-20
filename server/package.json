@@ -1,0 +1,16 @@
+{
+  "name": "grievancepulse-server",
+  "version": "1.0.0",
+  "description": "GrievancePulse AI — Express Backend",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node --watch index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

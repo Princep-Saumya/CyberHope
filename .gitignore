@@ -1,0 +1,29 @@
+﻿# Dependencies
+node_modules
+**/node_modules
+
+# Build output
+dist
+**/dist
+client/dist
+
+# Environment files
+.env
+client/.env
+server/.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Bob AI
+.bob/

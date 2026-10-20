@@ -1,0 +1,64 @@
+/**
+ * API service layer — all fetch wrappers for the backend.
+ */
+
+const BASE = '/api';
+
+async function request(path, options = {}) {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export const api = {
+  // GET /api/grievances with filters
+  getGrievances: (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+    const qs = params.toString();
+    return request(`/grievances${qs ? `?${qs}` : ''}`);
+  },
+
+  // GET /api/grievances/:id
+  getGrievance: (id) => request(`/grievances/${id}`),
+
+  // PATCH /api/grievances/:id/status
+  updateStatus: (id, status) =>
+    request(`/grievances/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
+  // POST /api/analyze
+  analyzePost: (postText, imageOcrText = '', grievanceId = null) =>
+    request('/analyze', {
+      method: 'POST',
+      body: JSON.stringify({ post_text: postText, image_ocr_text: imageOcrText, grievance_id: grievanceId }),
+    }),
+
+  // GET /api/clusters
+  getClusters: () => request('/clusters'),
+
+  // GET /api/stats
+  getStats: () => request('/stats'),
+
+  // GET /api/health
+  health: () => request('/health'),
+
+  // POST /api/official-response
+  generateOfficialResponse: (grievanceId) =>
+    request('/official-response', {
+      method: 'POST',
+      body: JSON.stringify({ grievance_id: grievanceId }),
+    }),
+
+  // PATCH /api/grievances/:id/escalate
+  escalateGrievance: (id) =>
+    request(`/grievances/${id}/escalate`, { method: 'PATCH' }),
+};
