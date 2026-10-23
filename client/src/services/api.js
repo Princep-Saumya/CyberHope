@@ -35,11 +35,38 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
 
+  // POST /api/grievances/:id/acknowledgment — save a local record, not an outbound message
+  recordAcknowledgment: (id, message) =>
+    request(`/grievances/${id}/acknowledgment`, {
+      method: 'POST',
+      body: JSON.stringify({ message }),
+    }),
+
   // POST /api/analyze
   analyzePost: (postText, imageOcrText = '', grievanceId = null) =>
     request('/analyze', {
       method: 'POST',
       body: JSON.stringify({ post_text: postText, image_ocr_text: imageOcrText, grievance_id: grievanceId }),
+    }),
+
+  // POST /api/sample-reports
+  addSampleReport: (post) =>
+    request('/sample-reports', {
+      method: 'POST',
+      body: JSON.stringify(post),
+    }),
+
+  getPublicSourceStatus: () => request('/sources/status'),
+
+  searchPublicSource: (source, query) => {
+    const params = new URLSearchParams({ source, q: query });
+    return request(`/sources/search?${params}`);
+  },
+
+  importPublicSourceItem: (item) =>
+    request('/grievances/import', {
+      method: 'POST',
+      body: JSON.stringify(item),
     }),
 
   // GET /api/clusters

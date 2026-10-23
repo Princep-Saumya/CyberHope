@@ -23,14 +23,9 @@ export function useGrievances() {
   const debounceTimer = useRef(null);
 
   const loadStats = useCallback(async () => {
-    try {
-      const s = await api.getStats();
-      setStats(s);
-      const c = await api.getClusters();
-      setClusters(c.data || []);
-    } catch (e) {
-      console.warn('Stats load failed:', e.message);
-    }
+    const [s, c] = await Promise.all([api.getStats(), api.getClusters()]);
+    setStats(s);
+    setClusters(c.data || []);
   }, []);
 
   const loadGrievances = useCallback(async (activeFilters) => {
@@ -58,7 +53,7 @@ export function useGrievances() {
 
   // Load stats once on mount
   useEffect(() => {
-    loadStats();
+    loadStats().catch(e => setError(e.message));
   }, [loadStats]);
 
   const updateFilter = useCallback((key, value) => {
@@ -70,18 +65,47 @@ export function useGrievances() {
   }, []);
 
   const updateGrievanceStatus = useCallback(async (id, status) => {
-    try {
-      const result = await api.updateStatus(id, status);
-      setGrievances(prev => prev.map(g => g.id === id ? result.record : g));
-      if (selectedGrievance?.id === id) {
-        setSelectedGrievance(result.record);
-      }
-      loadStats();
-      return result.record;
-    } catch (e) {
-      throw e;
+    const result = await api.updateStatus(id, status);
+    setGrievances(prev => prev.flatMap(g => {
+      if (g.id !== id) return [g];
+      if (filters.status && filters.status !== 'All' && filters.status !== status) return [];
+      return [result.record];
+    }));
+    if (selectedGrievance?.id === id) {
+      setSelectedGrievance(result.record);
     }
-  }, [selectedGrievance, loadStats]);
+    loadStats().catch(e => setError(e.message));
+    return result.record;
+  }, [selectedGrievance, loadStats, filters.status]);
+
+  const addSampleReport = useCallback(async (post) => {
+    const result = await api.addSampleReport(post);
+    const [list, nextStats, nextClusters] = await Promise.all([
+      api.getGrievances(DEFAULT_FILTERS),
+      api.getStats(),
+      api.getClusters(),
+    ]);
+    setFilters(DEFAULT_FILTERS);
+    setGrievances(list.data || []);
+    setStats(nextStats);
+    setClusters(nextClusters.data || []);
+    setError(null);
+    return result;
+  }, []);
+
+  const importPublicSourceItem = useCallback(async (item) => {
+    const result = await api.importPublicSourceItem(item);
+    const [list, nextStats, nextClusters] = await Promise.all([
+      api.getGrievances(filters),
+      api.getStats(),
+      api.getClusters(),
+    ]);
+    setGrievances(list.data || []);
+    setStats(nextStats);
+    setClusters(nextClusters.data || []);
+    setError(null);
+    return result;
+  }, [filters]);
 
   const reanalyzeGrievance = useCallback(async (grievance) => {
     const result = await api.analyzePost(grievance.post_text, grievance.image_ocr_text, grievance.id);
@@ -94,12 +118,22 @@ export function useGrievances() {
         authenticity_risk_score: result.analysis.authenticity_risk_score,
         authenticity_flag: result.analysis.authenticity_flag,
         ai_summary: result.analysis.summary,
+        analysis_mode: result.analysis.analysis_mode,
       };
       setGrievances(prev => prev.map(g => g.id === grievance.id ? updated : g));
-      setSelectedGrievance(updated);
+      setSelectedGrievance(prev => prev?.id === grievance.id ? updated : prev);
+      loadStats().catch(e => setError(e.message));
     }
     return result;
-  }, []);
+  }, [loadStats]);
+
+  const escalateGrievance = useCallback(async (id) => {
+    const result = await api.escalateGrievance(id);
+    setGrievances(prev => prev.map(g => g.id === id ? result.record : g));
+    setSelectedGrievance(prev => prev?.id === id ? result.record : prev);
+    loadStats().catch(e => setError(e.message));
+    return result;
+  }, [loadStats]);
 
   // Cluster siblings for a given grievance
   const getClusterSiblings = useCallback((grievance) => {
@@ -121,6 +155,9 @@ export function useGrievances() {
     selectedGrievance,
     setSelectedGrievance,
     updateGrievanceStatus,
+    escalateGrievance,
+    addSampleReport,
+    importPublicSourceItem,
     reanalyzeGrievance,
     getClusterSiblings,
   };
