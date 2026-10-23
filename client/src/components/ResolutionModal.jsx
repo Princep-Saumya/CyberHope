@@ -237,7 +237,9 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
 
               {(analysisResult?.summary || grievance.ai_summary) && (
                 <div className="bg-violet-50 border border-violet-200 rounded-lg p-2.5">
-                  <div className="text-xs text-violet-700 font-semibold mb-1">Gemini Summary</div>
+                  <div className="text-xs text-violet-700 font-semibold mb-1">
+                    {grievance.analysis_mode === 'gemini' ? 'Gemini Summary' : 'Analysis Summary'}
+                  </div>
                   <p className="text-xs text-violet-800 italic leading-relaxed">
                     &ldquo;{analysisResult?.summary || grievance.ai_summary}&rdquo;
                   </p>
@@ -250,7 +252,7 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
                 className="btn-primary w-full justify-center text-xs py-1.5 gap-1.5"
               >
                 {analyzeLoading ? <Loader2 size={12} className="animate-spin" /> : <Brain size={12} />}
-                {analyzeLoading ? 'Analysing…' : 'Re-analyze with Gemini AI'}
+                {analyzeLoading ? 'Analysing…' : `Re-analyze with ${grievance.analysis_mode === 'gemini' ? 'Gemini' : 'local'} analysis`}
               </button>
             </div>
 

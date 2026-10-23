@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   CheckCircle2, Clock, AlertTriangle, FileText, Send,
   ChevronDown, ChevronRight, MapPin, Building2, Calendar,
@@ -55,13 +55,13 @@ function exportCSV(grievances) {
   a.click(); URL.revokeObjectURL(url);
 }
 
-function LifecycleStepper({ currentStatus, grievanceId, onUpdate }) {
+function LifecycleStepper({ currentStatus, grievanceId, onUpdate, onError }) {
   const [loading, setLoading] = useState(false);
   const currentIdx = STATUS_FLOW.indexOf(currentStatus);
   const handle = async (status) => {
     if (status === currentStatus) return;
     setLoading(true);
-    try { await onUpdate(grievanceId, status); } catch(e) { console.error(e); } finally { setLoading(false); }
+    try { await onUpdate(grievanceId, status); } catch(e) { onError(e.message); } finally { setLoading(false); }
   };
   return (
     <div className="flex items-center w-full">
@@ -96,35 +96,74 @@ function ResolutionRow({ g, onUpdate, onEscalate }) {
   const [expanded, setExpanded]     = useState(false);
   const [localStatus, setLocal]     = useState(g.status);
   const [localAudit, setAudit]      = useState(g.audit_log || []);
-  const [response, setResponse]     = useState('');
-  const [sent, setSent]             = useState(false);
+  const [response, setResponse]     = useState(() => fillTemplate(RESPONSE_TEMPLATES[g.status] || '', g));
+  const [acknowledgmentRecorded, setAcknowledgmentRecorded] = useState(Boolean(g.acknowledgment));
+  const [ackLoading, setAckLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [aiLoading, setAiLoading]   = useState(false);
   const [aiResponse, setAiResponse] = useState('');
+  const [aiResponseSource, setAiResponseSource] = useState('');
   const [escLoading, setEscLoading] = useState(false);
   const [isEscalated, setEscalated] = useState(false);
 
   const cfg = STATUS_CFG[localStatus] || STATUS_CFG.Received;
   const sla = getSlaInfo({ ...g, status: localStatus });
 
+  useEffect(() => { setLocal(g.status); }, [g.status]);
+  useEffect(() => {
+    setAudit(g.audit_log || []);
+    setAcknowledgmentRecorded(Boolean(g.acknowledgment));
+  }, [g.audit_log, g.acknowledgment]);
+
   const handleUpdate = async (id, status) => {
-    await onUpdate(id, status); setLocal(status);
-    setResponse(fillTemplate(RESPONSE_TEMPLATES[status] || '', g)); setSent(false);
+    setActionError('');
+    await onUpdate(id, status);
+    setLocal(status);
+    setResponse(fillTemplate(RESPONSE_TEMPLATES[status] || '', g));
   };
 
   const handleGenerateAI = async () => {
     setAiLoading(true);
-    try { const r = await api.generateOfficialResponse(g.id); setAiResponse(r.response); setResponse(r.response); }
-    catch(e) { setAiResponse(`Error: ${e.message}`); } finally { setAiLoading(false); }
+    setActionError('');
+    try {
+      const r = await api.generateOfficialResponse(g.id);
+      setAiResponse(r.response);
+      setAiResponseSource(r.source);
+      setResponse(r.response);
+    } catch(e) {
+      setActionError(`Could not generate a response: ${e.message}`);
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const handleEscalate = async () => {
     setEscLoading(true);
+    setActionError('');
     try {
       const r = await onEscalate(g.id);
       setLocal('Escalated to DM');
       setAudit(r.record?.audit_log || [...localAudit, { action: 'ESCALATED_TO_DM', timestamp: new Date().toISOString(), by: 'System', note: 'Escalated to DM due to SLA breach' }]);
       setEscalated(true);
-    } catch(e) { console.error(e); } finally { setEscLoading(false); }
+    } catch(e) {
+      setActionError(`Could not escalate this report: ${e.message}`);
+    } finally {
+      setEscLoading(false);
+    }
+  };
+
+  const handleRecordAcknowledgment = async () => {
+    setAckLoading(true);
+    setActionError('');
+    try {
+      const result = await api.recordAcknowledgment(g.id, response);
+      setAudit(result.record.audit_log || []);
+      setAcknowledgmentRecorded(true);
+    } catch(e) {
+      setActionError(`Could not save the acknowledgment: ${e.message}`);
+    } finally {
+      setAckLoading(false);
+    }
   };
 
   return (
@@ -175,13 +214,19 @@ function ResolutionRow({ g, onUpdate, onEscalate }) {
         {expanded ? <ChevronDown size={14} className="text-slate-400 flex-shrink-0"/> : <ChevronRight size={14} className="text-slate-400 flex-shrink-0"/>}
       </div>
 
+      {actionError && (
+        <div role="alert" className="mx-4 mb-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2">
+          {actionError}
+        </div>
+      )}
+
       {expanded && (
         <div className="border-t border-slate-100 p-4 bg-slate-50 grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="flex flex-col gap-3">
             <div>
               <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Status Lifecycle</div>
               <div className="bg-white border border-slate-200 rounded-xl p-3">
-                <LifecycleStepper currentStatus={localStatus} grievanceId={g.id} onUpdate={handleUpdate}/>
+                <LifecycleStepper currentStatus={localStatus} grievanceId={g.id} onUpdate={handleUpdate} onError={setActionError}/>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
@@ -230,6 +275,11 @@ function ResolutionRow({ g, onUpdate, onEscalate }) {
                 {aiLoading ? <Loader2 size={13} className="animate-spin"/> : <Zap size={13}/>}
                 {aiLoading ? 'Generating...' : '⚡ Generate AI Official Response'}
               </button>
+              {aiResponseSource && (
+                <div className="text-xs text-slate-500 mb-2">
+                  Generated by {aiResponseSource === 'gemini' ? 'Gemini' : 'department response template'}.
+                </div>
+              )}
               {aiResponse && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800 italic leading-relaxed">"{aiResponse}"</div>
               )}
@@ -239,16 +289,25 @@ function ResolutionRow({ g, onUpdate, onEscalate }) {
               <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
                 <FileText size={11}/>Citizen Acknowledgment
               </div>
-              <textarea rows={4} value={response || fillTemplate(RESPONSE_TEMPLATES[localStatus] || '', g)}
+              <textarea rows={4} value={response}
                 onChange={e => setResponse(e.target.value)}
                 className="input-field resize-none text-xs font-mono leading-relaxed mb-2"/>
               <div className="flex gap-2">
-                <button onClick={() => setSent(true)} className="btn-primary text-xs py-1.5 flex-1 justify-center">
-                  <Send size={12}/>{sent ? '✓ Sent' : 'Send Acknowledgment'}
+                <button onClick={handleRecordAcknowledgment} disabled={ackLoading} className="btn-primary text-xs py-1.5 flex-1 justify-center disabled:opacity-60">
+                  {ackLoading ? <Loader2 size={12} className="animate-spin"/> : <Send size={12}/>}
+                  {acknowledgmentRecorded ? '✓ Recorded locally' : ackLoading ? 'Saving…' : 'Record Acknowledgment'}
                 </button>
-                <button onClick={() => { setResponse(''); setSent(false); }} className="btn-secondary text-xs py-1.5 px-3">Reset</button>
+                <button onClick={() => {
+                  setResponse(fillTemplate(RESPONSE_TEMPLATES[localStatus] || '', g));
+                  setAcknowledgmentRecorded(Boolean(g.acknowledgment));
+                  setActionError('');
+                }} className="btn-secondary text-xs py-1.5 px-3">Reset</button>
               </div>
-              {sent && <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2 font-medium">✓ Sent successfully</div>}
+              {acknowledgmentRecorded && (
+                <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2 font-medium">
+                  Saved to the temporary in-memory audit only. No message was sent to the citizen.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -257,9 +316,13 @@ function ResolutionRow({ g, onUpdate, onEscalate }) {
   );
 }
 
-export default function ResolutionPortal({ grievances, onUpdateStatus }) {
+export default function ResolutionPortal({ grievances, onUpdateStatus, onEscalate }) {
   const [statusFilter, setStatusFilter] = useState('');
-  const handleEscalate = useCallback(async (id) => api.escalateGrievance(id), []);
+  const [departmentFilter, setDepartmentFilter] = useState('');
+  const departments = useMemo(
+    () => [...new Set(grievances.map(g => g.department).filter(Boolean))].sort(),
+    [grievances]
+  );
 
   const stats = useMemo(() => {
     const c = {};
@@ -267,7 +330,10 @@ export default function ResolutionPortal({ grievances, onUpdateStatus }) {
     return c;
   }, [grievances]);
 
-  const filtered = statusFilter ? grievances.filter(g => g.status === statusFilter) : grievances;
+  const filtered = grievances.filter(g =>
+    (!statusFilter || g.status === statusFilter) &&
+    (!departmentFilter || g.department === departmentFilter)
+  );
   const overdueCount = useMemo(() => grievances.filter(g => {
     const sla = SLA_HOURS[g.status]; if (!sla) return false;
     return Date.now() > new Date(g.timestamp).getTime() + sla * 3600000;
@@ -283,9 +349,20 @@ export default function ResolutionPortal({ grievances, onUpdateStatus }) {
           <div className="text-base font-bold text-slate-800">Complaint Resolution Tracker</div>
           <div className="text-xs text-slate-500">{grievances.length} total complaints across Bihar districts</div>
         </div>
-        <button onClick={() => exportCSV(grievances)} className="btn-secondary text-sm font-semibold">
-          <Download size={14}/>📥 Export SLA Audit Report
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            aria-label="Filter by department"
+            value={departmentFilter}
+            onChange={e => setDepartmentFilter(e.target.value)}
+            className="select-field max-w-xs"
+          >
+            <option value="">All departments</option>
+            {departments.map(department => <option key={department} value={department}>{department}</option>)}
+          </select>
+          <button onClick={() => exportCSV(filtered)} className="btn-secondary text-sm font-semibold">
+            <Download size={14}/>📥 Export SLA Audit Report
+          </button>
+        </div>
       </div>
 
       {/* Status KPIs */}
@@ -319,7 +396,7 @@ export default function ResolutionPortal({ grievances, onUpdateStatus }) {
       <div className="flex flex-col gap-2">
         {filtered.length === 0
           ? <div className="card p-10 text-center text-slate-400 font-medium">No complaints in this status</div>
-          : filtered.map(g => <ResolutionRow key={g.id} g={g} onUpdate={onUpdateStatus} onEscalate={handleEscalate}/>)}
+          : filtered.map(g => <ResolutionRow key={g.id} g={g} onUpdate={onUpdateStatus} onEscalate={onEscalate}/>)}
       </div>
     </div>
   );
