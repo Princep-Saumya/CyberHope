@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const grievancesRouter = require('./routes/grievances');
+const sourcesRouter = require('./routes/sources');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -16,6 +17,7 @@ app.get('/api/health', (req, res) => {
 
 // Main routes
 app.use('/api', grievancesRouter);
+app.use('/api', sourcesRouter);
 
 // Global error handler
 app.use((err, req, res, next) => {
