@@ -3,20 +3,6 @@ import { GitMerge, ChevronDown, ChevronRight, MapPin, Users, Copy, Layers } from
 
 const SEVERITY_COLOR = s => s >= 9 ? '#e11d48' : s >= 7 ? '#d97706' : s >= 5 ? '#2563eb' : '#059669';
 
-function SimilarityBar({ value, label }) {
-  const pct   = Math.round(value * 100);
-  const color = pct >= 80 ? '#e11d48' : pct >= 60 ? '#d97706' : '#059669';
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-slate-500 w-28 flex-shrink-0">{label}</span>
-      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span className="text-xs font-mono font-bold flex-shrink-0" style={{ color }}>{pct}%</span>
-    </div>
-  );
-}
-
 function MemberCard({ g, isRep }) {
   const sv = SEVERITY_COLOR(g.severity_score);
   return (
@@ -50,10 +36,6 @@ function ClusterCard({ cluster, grievances, onSelectGrievance }) {
   const lead    = members[0];
   const maxSev  = cluster.max_severity;
   const sevColor = SEVERITY_COLOR(maxSev);
-  const geoSim  = members.length > 1 ? 0.88 : 0;
-  const textSim = members.length > 1 ? 0.75 : 0;
-  const hashSim = members.length > 1 ? 0.91 : 0;
-
   return (
     <div className="card overflow-hidden transition-all duration-200 hover:shadow-md hover:border-slate-300">
       <div className="flex items-start gap-4 p-4 cursor-pointer hover:bg-slate-50 transition-colors"
@@ -92,14 +74,15 @@ function ClusterCard({ cluster, grievances, onSelectGrievance }) {
       {expanded && (
         <div className="border-t border-slate-100 p-4 bg-slate-50">
           <div className="card p-3 mb-4">
-            <div className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Merge Criteria — Similarity Scores</div>
-            <div className="flex flex-col gap-2">
-              <SimilarityBar label="Geo-Proximity" value={geoSim} />
-              <SimilarityBar label="Text Jaccard"  value={textSim} />
-              <SimilarityBar label="Hashtag Overlap" value={hashSim} />
+            <div className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Matching Rules</div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="badge bg-slate-100 text-slate-700 border border-slate-200">Same department and category</span>
+              <span className="badge bg-blue-50 text-blue-700 border border-blue-200">Within 500 m</span>
+              <span className="badge bg-indigo-50 text-indigo-700 border border-indigo-200">Text overlap ≥70%</span>
+              <span className="badge bg-violet-50 text-violet-700 border border-violet-200">2+ shared hashtags</span>
             </div>
             <div className="mt-3 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-2">
-              <strong>Merge Logic:</strong> Coordinates within 500m <strong>AND/OR</strong> text similarity ≥70% <strong>AND/OR</strong> ≥2 shared hashtags → single Master Ticket.
+              New sample reports are matched against available records using these rules. Initial clusters are pre-grouped records; match percentages are not model confidence scores.
             </div>
           </div>
           <div className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Source Lineage — {members.length} Posts</div>

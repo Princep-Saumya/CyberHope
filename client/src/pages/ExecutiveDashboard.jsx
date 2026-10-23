@@ -85,14 +85,19 @@ export default function ExecutiveDashboard({ grievances, stats, clusters, onSele
     if (!clusterMap[key]) clusterMap[key] = [];
     clusterMap[key].push(g);
   }
-  const mapGroups = Object.values(clusterMap);
+  const mapGroups = Object.values(clusterMap)
+    .map(group => ({
+      group,
+      rep: group.find(g => Number.isFinite(g.coordinates?.lat) && Number.isFinite(g.coordinates?.lng)),
+    }))
+    .filter(entry => entry.rep);
 
   return (
     <div className="flex flex-col gap-5">
       {/* KPI row */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KpiCard icon={TrendingUp}    label="OSINT Monitored"    value={stats?.total ?? '—'}
-          sub="Total posts analysed" color="#2563eb" bg="#3b82f6" />
+        <KpiCard icon={TrendingUp}    label="Total Reports"      value={stats?.total ?? '—'}
+          sub={`${stats?.reference_records ?? 0} reference records`} color="#2563eb" bg="#3b82f6" />
         <KpiCard icon={GitMerge}      label="Active Clusters"    value={stats?.cluster_count ?? '—'}
           sub={`${stats?.duplicates_clustered ?? 0} posts merged`} color="#7c3aed" bg="#8b5cf6" />
         <KpiCard icon={AlertTriangle} label="Critical Incidents" value={stats?.critical ?? '—'}
@@ -113,7 +118,7 @@ export default function ExecutiveDashboard({ grievances, stats, clusters, onSele
               <div className="section-sub mt-0.5">Click any marker to open complaint detail</div>
             </div>
             <div className="flex gap-3 flex-wrap">
-              {[['#e11d48','Critical'],['#d97706','High'],['#2563eb','Medium'],['#7c3aed','Suspicious']].map(([c,l])=>(
+              {[['#e11d48','Critical'],['#d97706','High'],['#2563eb','Medium'],['#7c3aed','Suspicious'],['#16a34a','Resolved / closed']].map(([c,l])=>(
                 <span key={l} className="flex items-center gap-1 text-xs text-slate-500">
                   <span className="w-2 h-2 rounded-full" style={{ background: c }} />{l}
                 </span>
@@ -125,11 +130,11 @@ export default function ExecutiveDashboard({ grievances, stats, clusters, onSele
               <MapResizer />
               <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a>' />
-              {mapGroups.map((group, idx) => {
-                const rep   = group[0];
+              {mapGroups.map(({ group, rep }, idx) => {
                 const susp  = group.some(g => g.authenticity_flag !== 'Likely Genuine Grievance');
                 const maxS  = Math.max(...group.map(g => g.severity_score));
-                const color = susp ? '#7c3aed' : SEVERITY_COLOR(maxS);
+                const isResolved = group.every(g => g.status === 'Resolved' || g.status === 'Closed');
+                const color = isResolved ? '#16a34a' : susp ? '#7c3aed' : SEVERITY_COLOR(maxS);
                 return (
                   <CircleMarker key={idx} center={[rep.coordinates.lat, rep.coordinates.lng]}
                     radius={Math.max(8, 5 + group.length * 3)}
@@ -139,7 +144,7 @@ export default function ExecutiveDashboard({ grievances, stats, clusters, onSele
                     <Popup>
                       <div style={{ minWidth: 175, fontFamily: 'Inter,system-ui' }}>
                         <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4, color: '#1e293b' }}>
-                          📍 {group.length > 1 ? `${group.length} Reports Merged` : 'Single Report'}
+                          📍 {isResolved ? 'Resolved' : group.length > 1 ? `${group.length} Reports Merged` : 'Single Report'}
                         </div>
                         <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, marginBottom: 3 }}>{rep.location_tagged}</div>
                         <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>{rep.post_text?.slice(0, 75)}...</div>
