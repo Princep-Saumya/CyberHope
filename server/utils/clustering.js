@@ -64,17 +64,16 @@ function hashtagOverlap(hashtagsA, hashtagsB) {
 function clusterGrievances(records) {
   // Work on a copy; preserve existing cluster IDs from seed
   const result = records.map(r => ({ ...r }));
+  const usedClusterIds = new Set(result.map(r => r.duplicate_cluster_id).filter(Boolean));
   let clusterCounter = 1;
 
   for (let i = 0; i < result.length; i++) {
-    // Already has a cluster ID (from seed or prior iteration)
-    if (result[i].duplicate_cluster_id) continue;
-
     for (let j = i + 1; j < result.length; j++) {
-      if (result[j].duplicate_cluster_id) continue;
-
       const a = result[i];
       const b = result[j];
+      if (a.duplicate_cluster_id && b.duplicate_cluster_id) continue;
+      if (a.department && b.department && a.department !== b.department) continue;
+      if (a.category && b.category && a.category !== b.category) continue;
 
       let shouldCluster = false;
 
@@ -97,11 +96,15 @@ function clusterGrievances(records) {
       }
 
       if (shouldCluster) {
-        // Assign both to the same cluster
-        const clusterId = result[i].duplicate_cluster_id || `AUTO_CLUSTER_${String(clusterCounter).padStart(3, '0')}`;
+        let clusterId = a.duplicate_cluster_id || b.duplicate_cluster_id;
+        if (!clusterId) {
+          do {
+            clusterId = `AUTO_CLUSTER_${String(clusterCounter++).padStart(3, '0')}`;
+          } while (usedClusterIds.has(clusterId));
+          usedClusterIds.add(clusterId);
+        }
         result[i].duplicate_cluster_id = clusterId;
         result[j].duplicate_cluster_id = clusterId;
-        clusterCounter++;
       }
     }
   }
