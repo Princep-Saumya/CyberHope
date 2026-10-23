@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
-import { Search, MapPin, Building2, Shield, RotateCcw, Hash, LayoutGrid, List, AlertTriangle, CheckCircle2, Copy, ExternalLink } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Search, MapPin, Building2, Shield, RotateCcw, Hash, LayoutGrid, List, AlertTriangle, CheckCircle2, Copy, ExternalLink, Newspaper, Loader2, Radio } from 'lucide-react';
 import { formatDistanceToNow } from '../utils/dateUtils';
+import { api } from '../services/api';
 
 const DEPARTMENTS = [
   '', 'Road Construction Department (RCD)',
@@ -25,6 +26,156 @@ const STATUS_CLS = {
   Closed:                'text-slate-500 bg-slate-50 border-slate-200',
 };
 
+function PublicSourceSearch({ onImportSourceItem }) {
+  const [source, setSource] = useState('google-news');
+  const [query, setQuery] = useState('');
+  const [statuses, setStatuses] = useState({});
+  const [items, setItems] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [itemActions, setItemActions] = useState({});
+
+  useEffect(() => {
+    api.getPublicSourceStatus()
+      .then(result => setStatuses(result.sources || {}))
+      .catch(error => setSearchError(`Could not load source status: ${error.message}`));
+  }, []);
+
+  const handleSearch = async (event) => {
+    event.preventDefault();
+    setSearching(true);
+    setSearchError('');
+    setItems([]);
+    try {
+      const result = await api.searchPublicSource(source, query);
+      setItems(result.items || []);
+    } catch (error) {
+      setSearchError(error.message);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleImport = async (item) => {
+    setItemActions(prev => ({ ...prev, [item.id]: { state: 'loading' } }));
+    try {
+      const result = await onImportSourceItem({
+        source: item.source,
+        source_id: item.id,
+        source_url: item.url,
+        author: item.author,
+        published_at: item.published_at,
+        post_text: item.text || item.title,
+      });
+      setItemActions(prev => ({
+        ...prev,
+        [item.id]: {
+          state: 'saved',
+          duplicate: result.duplicate,
+          department: result.record.department,
+          severity: result.record.severity_score,
+          mode: result.record.analysis_mode,
+        },
+      }));
+    } catch (error) {
+      setItemActions(prev => ({ ...prev, [item.id]: { state: 'error', message: error.message } }));
+    }
+  };
+
+  const selectedStatus = statuses[source];
+
+  return (
+    <section className="card p-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+            <Radio size={15} className="text-blue-600" /> Public Source Search
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Search public coverage and posts. Google News provides headlines and excerpts; analysis uses the returned text, not the full article.
+          </p>
+        </div>
+        {selectedStatus && (
+          <span className={`badge border whitespace-nowrap ${
+            selectedStatus.configured
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-amber-50 text-amber-700 border-amber-200'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${selectedStatus.configured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            {selectedStatus.configured ? 'Connected' : 'Setup required'}
+          </span>
+        )}
+      </div>
+
+      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
+        <select value={source} onChange={event => setSource(event.target.value)} className="select-field sm:w-44">
+          <option value="google-news">Google News</option>
+          <option value="reddit">Reddit</option>
+        </select>
+        <input
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          maxLength={160}
+          placeholder="Search Bihar civic issues, e.g. Patna water supply"
+          className="input-field flex-1"
+          required
+        />
+        <button type="submit" disabled={searching || !selectedStatus?.configured}
+          className="btn-primary justify-center disabled:opacity-50">
+          {searching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+          {searching ? 'Searching…' : 'Search source'}
+        </button>
+      </form>
+      {!selectedStatus?.configured && selectedStatus?.reason && (
+        <p className="mt-2 text-xs text-amber-700">{selectedStatus.reason} Add credentials to the server environment to enable this source.</p>
+      )}
+      {searchError && <p role="alert" className="mt-2 text-sm text-rose-700">{searchError}</p>}
+
+      {items.length > 0 && (
+        <div className="mt-4 flex flex-col gap-2">
+          <div className="text-xs text-slate-500">{items.length} public results · Choose an item to run analysis and add it to reports.</div>
+          {items.map(item => {
+            const action = itemActions[item.id];
+            return (
+              <article key={item.id} className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <a href={item.url || undefined} target="_blank" rel="noreferrer"
+                      className="text-sm font-semibold text-blue-700 hover:underline">
+                      {item.title}
+                    </a>
+                    <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-2">
+                      <span>{item.source}{item.subreddit ? ` · ${item.subreddit}` : ''}</span>
+                      <span>{item.author}</span>
+                      {item.published_at && <span>{formatDistanceToNow(item.published_at)}</span>}
+                    </div>
+                    {item.text && <p className="text-xs text-slate-600 mt-2 line-clamp-3">{item.text}</p>}
+                  </div>
+                  <button type="button" onClick={() => handleImport(item)}
+                    disabled={!item.url || action?.state === 'loading' || action?.state === 'saved'}
+                    className="btn-secondary text-xs whitespace-nowrap disabled:opacity-60">
+                    {action?.state === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Newspaper size={12} />}
+                    {action?.state === 'saved' ? (action.duplicate ? 'Already added' : 'Added to reports') : 'Analyze & Add'}
+                  </button>
+                </div>
+                {action?.state === 'saved' && (
+                  <p className="mt-2 text-xs text-emerald-700">
+                    {action.duplicate ? 'This source link was already recorded.' : `${action.department} · Severity ${action.severity}/10 · ${action.mode === 'gemini' ? 'Gemini' : 'Local heuristic'} analysis`}
+                  </p>
+                )}
+                {action?.state === 'error' && <p role="alert" className="mt-2 text-xs text-rose-700">{action.message}</p>}
+              </article>
+            );
+          })}
+        </div>
+      )}
+      {!searching && !searchError && items.length === 0 && query && (
+        <p className="mt-3 text-xs text-slate-500">No source results loaded yet. Search to retrieve current public items.</p>
+      )}
+    </section>
+  );
+}
+
 function GrievanceRow({ g, onSelect, clusterCount }) {
   const sv = SEVERITY_CFG(g.severity_score);
   const isSusp = g.authenticity_flag !== 'Likely Genuine Grievance';
@@ -37,6 +188,9 @@ function GrievanceRow({ g, onSelect, clusterCount }) {
           <div>
             <div className="text-sm font-semibold text-slate-800">{g.author_handle}</div>
             <div className="text-xs text-slate-400 font-mono">{g.platform.split(' ')[0]}</div>
+            {g.is_reference_record && (
+              <span className="badge mt-1 bg-slate-100 text-slate-600 border border-slate-200">Reference record</span>
+            )}
           </div>
         </div>
       </td>
@@ -75,7 +229,7 @@ function GrievanceRow({ g, onSelect, clusterCount }) {
         <span className={`badge text-xs border ${statusCls}`}>{g.status}</span>
       </td>
       <td className="px-4 py-3">
-        <button className="btn-ghost text-xs py-1 px-2 text-blue-600">
+        <button type="button" onClick={e => { e.stopPropagation(); onSelect(g); }} className="btn-ghost text-xs py-1 px-2 text-blue-600">
           <ExternalLink size={11}/> View
         </button>
       </td>
@@ -100,6 +254,9 @@ function GrievanceCard({ g, onSelect, clusterCount }) {
         </span>
       </div>
       <p className="text-sm text-slate-700 line-clamp-2 mb-2">{g.post_text}</p>
+      {g.is_reference_record && (
+        <span className="badge mb-2 bg-slate-100 text-slate-600 border border-slate-200">Reference record</span>
+      )}
       <div className="flex gap-1 flex-wrap mb-2">
         {(g.hashtags||[]).slice(0,4).map(h => (
           <span key={h} className="text-xs text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-mono">{h}</span>
@@ -116,7 +273,7 @@ function GrievanceCard({ g, onSelect, clusterCount }) {
   );
 }
 
-export default function OSINTSearch({ filters, onFilterChange, onReset, grievances, loading, onSelectGrievance }) {
+export default function OSINTSearch({ filters, onFilterChange, onReset, grievances, loading, onSelectGrievance, onImportSourceItem }) {
   const [viewMode, setViewMode] = useState('table');
 
   const clusterCounts = useMemo(() => {
@@ -129,6 +286,8 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
 
   return (
     <div className="flex flex-col gap-4">
+      <PublicSourceSearch onImportSourceItem={onImportSourceItem} />
+
       {/* Filter bar */}
       <div className="card p-4">
         <div className="flex items-center gap-2 mb-3">
@@ -223,7 +382,7 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
         <div className="card p-12 flex flex-col items-center text-center">
           <Search size={36} className="text-slate-300 mb-3" />
           <div className="text-slate-500 font-medium">No matching grievances</div>
-          <div className="text-slate-400 text-sm mt-1">Seed fallback will pad results automatically</div>
+          <div className="text-slate-400 text-sm mt-1">Try changing your filters or reset them to see all reports.</div>
         </div>
       ) : viewMode === 'table' ? (
         <div className="card overflow-hidden">
