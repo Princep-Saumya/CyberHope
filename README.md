@@ -1,4 +1,4 @@
-﻿# GrievancePulse AI 🛡️
+﻿# CyberHope 🛡️
 ### Bihar Cyber Hackathon 2026 · PS-04: AI-Driven Public Grievance Intelligence and Resolution Monitoring Platform
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -11,7 +11,7 @@
 
 ## Overview
 
-**GrievancePulse AI** is a production-ready, full-stack intelligence platform that monitors, classifies, clusters, and resolves public grievances across Bihar districts using AI-powered OSINT analysis, geospatial visualization, and real-time duplicate detection.
+**CyberHope** is a production-ready, full-stack intelligence platform that monitors, classifies, clusters, and resolves public grievances across Bihar districts using AI-powered OSINT analysis, geospatial visualization, and real-time duplicate detection.
 
 The application features a **light-themed SaaS layout** with a fixed left sidebar, clean white cards, and a dedicated top header bar — designed for officer workstations and hackathon demos alike.
 
