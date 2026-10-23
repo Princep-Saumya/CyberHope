@@ -15,7 +15,7 @@ const DEPT_KEYWORDS = {
   'Water Resources Department (WRD)': ['flood', 'embankment', 'river', 'bagmati', 'ganga', 'breach', 'ndrf'],
 };
 
-const SEVERITY_BOOST_KEYWORDS = ['death', 'killed', 'fatal', 'emergency', 'collapse', 'breach', 'children', 'hospital', 'fire', 'accident', 'contamination'];
+const SEVERITY_BOOST_KEYWORDS = ['death', 'killed', 'fatal', 'emergency', 'collapse', 'breach', 'children', 'hospital', 'fire', 'accident', 'contamination', 'spark', 'live wire', 'exposed live wire', 'electric shock', 'electrocution'];
 const FAKE_KEYWORDS = ['rt rt', 'share before deleted', 'shocking proof', 'viral proof', 'expose', 'secret order', 'bot', 'target shares', 'wakeup', 'breaking proof', 'forged', 'fabricated'];
 
 function heuristicFallback(postText, imageOcrText) {
@@ -75,7 +75,7 @@ function heuristicFallback(postText, imageOcrText) {
   const words = postText.split(' ').slice(0, 20).join(' ');
   const summary = `[Heuristic] ${words}... — Dept: ${department}, Severity: ${severity}/10`;
 
-  return { department, category, severity_score: severity, authenticity_risk_score: riskScore, authenticity_flag: authenticityFlag, extracted_location: extractedLocation, summary };
+  return { department, category, severity_score: severity, authenticity_risk_score: riskScore, authenticity_flag: authenticityFlag, extracted_location: extractedLocation, summary, analysis_mode: 'heuristic-fallback' };
 }
 
 // ─── Gemini Analysis ──────────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ Return JSON strictly (no markdown, no code block, raw JSON only):
       if (parsed[field] === undefined) throw new Error(`Missing field: ${field}`);
     }
 
-    return parsed;
+    return { ...parsed, analysis_mode: 'gemini' };
   } catch (err) {
     console.error('Gemini API error, falling back to heuristics:', err.message);
     return heuristicFallback(postText, imageOcrText);
