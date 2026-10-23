@@ -11,9 +11,9 @@
 
 ## Overview
 
-**CyberHope** is a production-ready, full-stack intelligence platform that monitors, classifies, clusters, and resolves public grievances across Bihar districts using AI-powered OSINT analysis, geospatial visualization, and real-time duplicate detection.
+**CyberHope** is a full-stack intelligence platform for monitoring, classifying, clustering, and tracking public grievances across Bihar districts using AI-assisted OSINT analysis, geospatial visualization, and duplicate detection.
 
-The application features a **light-themed SaaS layout** with a fixed left sidebar, clean white cards, and a dedicated top header bar — designed for officer workstations and hackathon demos alike.
+The application features a **light-themed SaaS layout** with a fixed left sidebar, clean white cards, and a dedicated top header bar for officer workstations.
 
 ---
 
@@ -135,9 +135,11 @@ grievancepulse-ai/
     ├── package.json
     ├── env.example
     ├── routes/
-    │   └── grievances.js      ← All API routes + hybrid fetcher
+    │   ├── grievances.js      ← Grievance and analysis API routes
+    │   └── sources.js         ← Public-source status and search routes
     ├── services/
-    │   └── geminiService.js   ← Gemini 1.5 Flash + heuristic fallback
+    │   ├── geminiService.js   ← Gemini 1.5 Flash + heuristic fallback
+    │   └── publicSources.js   ← Google News RSS and Reddit OAuth search
     ├── utils/
     │   └── clustering.js      ← Haversine + Jaccard clustering engine
     └── data/
@@ -246,6 +248,9 @@ npm run build
 | Variable | Default | Required | Description |
 |---|---|---|---|
 | `GEMINI_API_KEY` | *(empty)* | ❌ Optional | Google Gemini 1.5 Flash API key. Heuristic fallback active without it. |
+| `REDDIT_CLIENT_ID` | *(empty)* | Optional | Reddit app client ID for public Reddit search. |
+| `REDDIT_CLIENT_SECRET` | *(empty)* | Optional | Reddit app client secret; keep it on the server. |
+| `REDDIT_USER_AGENT` | *(empty)* | Optional | Descriptive Reddit API user agent with an operator contact. |
 | `PORT` | `3001` | ❌ No | Express server port |
 | `NODE_ENV` | `development` | ❌ No | Set to `production` for prod builds |
 
@@ -261,11 +266,21 @@ Base URL: `http://localhost:3001`
 | `GET` | `/api/grievances` | Filtered list — query params: `hashtag`, `location`, `department`, `status`, `severity`, `authenticity` |
 | `GET` | `/api/grievances/:id` | Single grievance record by ID |
 | `PATCH` | `/api/grievances/:id/status` | Update complaint status lifecycle |
+| `POST` | `/api/grievances/:id/acknowledgment` | Save an acknowledgment draft locally; does not send it externally |
 | `POST` | `/api/analyze` | Run Gemini AI analysis on post text |
+| `POST` | `/api/sample-reports` | Analyze and add a clearly labeled sample report |
+| `GET` | `/api/sources/status` | Return public-source connection status |
+| `GET` | `/api/sources/search?source=google-news&q=...` | Search current Google News RSS results for Bihar |
+| `GET` | `/api/sources/search?source=reddit&q=...` | Search recent Reddit posts using OAuth |
+| `POST` | `/api/grievances/import` | Analyze a selected public item and add it to grievance records |
 | `GET` | `/api/clusters` | Master ticket cluster summaries |
 | `GET` | `/api/stats` | Dashboard KPI counters |
-| `POST` | `/api/grievances/:id/escalate` | Escalate complaint to District Magistrate |
-| `POST` | `/api/grievances/:id/response` | Generate AI official response draft |
+| `PATCH` | `/api/grievances/:id/escalate` | Escalate complaint to District Magistrate |
+| `POST` | `/api/official-response` | Generate AI official response draft |
+
+The **Add Sample Report** header button adds a clearly labeled sample Kankarbagh transformer report. In **OSINT Search**, Google News RSS can be searched without a key; it supplies headlines and excerpts, not full article text. Reddit search uses OAuth credentials configured only in `server/.env`; until configured, the interface shows that setup is required. Search results are not automatically saved or sent to Gemini: select **Analyze & Add** to classify the returned text and add it to shared grievance views. Grievance and status changes are currently held in process memory and reset when the server restarts.
+
+To enable Reddit, create an app through Reddit's developer app settings, then put its client ID, client secret, and a descriptive user agent containing a contact address in `server/.env`. Restart the backend after changing the environment file. Keep the client secret private and do not put it in frontend environment variables.
 
 ---
 
@@ -275,7 +290,7 @@ Base URL: `http://localhost:3001`
 |---|---|---|---|
 | Executive Dashboard | LayoutDashboard | `dashboard` | KPI cards, Bihar hotspot map, critical alerts, category pie, resolution pipeline |
 | OSINT Search | Search | `osint` | 4-param filter bar, table + grid view, quick-filter hashtag chips |
-| Duplicate Clusters | Layers | `clusters` | Master tickets with merge-criteria similarity bars and source lineage |
+| Duplicate Clusters | Layers | `clusters` | Master tickets with configured match rules and source lineage |
 | AI Verification | Sparkles | `ai` | Gemini workbench with risk meters, bot signal analysis, OCR preview |
 | Resolution Portal | FileCheck | `resolution` | SLA lifecycle stepper, overdue escalation, AI response generator, CSV export |
 
@@ -289,10 +304,11 @@ Base URL: `http://localhost:3001`
 - **Main Canvas** — `bg-slate-50`, all cards `bg-white border-slate-200 shadow-sm`
 - **Color-coded status badges** — Received (slate), Assigned (blue), Under Investigation (amber), Resolved (emerald), Closed (muted), Escalated (rose)
 
-### 2. Seed & Hybrid Fallback Data Engine
+### 2. Initial Reference Dataset
 - 20 pre-populated Bihar grievances across 6 districts
 - 5 BPSC/exam-leak records, 8+ civic/infrastructure records, 3 bot-flagged suspicious posts
-- If live filters return < 10 results, server pads with seed records to always show 15+
+- Search and filters return only matching records; unrelated seed records are not added to filtered results
+- Sample reports and lifecycle changes are temporary in-memory data
 
 ### 3. Multi-Parameter OSINT Search
 - Simultaneous filtering: hashtag (partial text), district, department, status, severity, authenticity
@@ -305,11 +321,13 @@ Base URL: `http://localhost:3001`
 - Input: raw post text + image OCR context
 - Output: department, category, severity (1–10), authenticity risk (0–100), flag, location, executive summary
 - Full heuristic fallback when key absent or API down
+- No separate local NLP package/model is installed: the fallback is a deterministic English keyword-rules classifier, not a trained NLP model. Clustering uses local Jaccard token overlap, hashtags, and coordinates; the UI shows which analysis path produced a result.
 
 ### 5. Duplicate Clustering Algorithm
 - **Haversine** geo-proximity: records within 500m → same Master Ticket
 - **Jaccard** text similarity: score ≥ 0.70 → clustered
 - **Hashtag overlap**: 2+ shared hashtags → clustered
+- New posts must also match department and category; seeded clusters are pre-grouped examples, not model-confidence scores
 - Similarity bar visualisation (Geo / Text / Hashtag %)
 
 ### 6. Resolution Portal + SLA Engine
@@ -335,14 +353,17 @@ Base URL: `http://localhost:3001`
 
 ---
 
-## Hackathon Demo Script
+## Application Walkthrough
 
-1. Open **http://localhost:5173** — sidebar loads, all 20 records appear on Dashboard
-2. Click **OSINT Search** in sidebar → type `#BPSC` → 5 exam-leak records filter live
-3. Click **Duplicate Clusters** → expand a cluster → see similarity bars + source lineage
-4. Click **AI Verification** → click "Re-run Gemini AI" on any suspicious post
-5. Click **Resolution Portal** → expand any complaint → move status through lifecycle stepper
-6. Click any map marker on Dashboard → Resolution Modal opens with full detail
+1. Open **http://localhost:5173** — the dashboard loads the initial reference records
+2. Use **Add Sample Report** in the header to see the local analysis and clustering flow
+3. Open **OSINT Search** and search Google News for a Bihar civic issue
+4. Select **Analyze & Add** on a relevant source result — its analysis appears in grievance records and dashboard metrics
+5. Configure Reddit OAuth values in `server/.env` to enable Reddit search
+3. Click **Duplicate Clusters** → expand the Kankarbagh cluster → see all member reports and the configured match rules
+4. Click **Resolution Portal** → filter by department, expand the simulated report, and move it through the lifecycle
+5. Return to Dashboard — a fully resolved cluster marker is green
+6. Click **AI Verification** → click "Re-run Gemini AI" on any suspicious post
 7. Find an overdue complaint → click "Escalate to DM"
 8. Click "Export SLA Audit Report" → downloads CSV
 
