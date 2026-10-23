@@ -1,7 +1,5 @@
 import { useState } from 'react';
 import { Brain, ShieldAlert, ShieldCheck, AlertTriangle, Loader2, Image as Img, Hash, User, Building2, Sparkles } from 'lucide-react';
-import { api } from '../services/api';
-
 const FAKE_KEYWORDS = ['RT RT', 'share before', 'shocking proof', 'expose', 'secret order', 'fabricated', 'forged', 'viral proof'];
 
 function RiskMeter({ value, label }) {
@@ -49,20 +47,19 @@ function BotSignalList({ postText }) {
   );
 }
 
-function GrievanceWorkbench({ g, onReanalyzed }) {
+function GrievanceWorkbench({ g, onReanalyze }) {
   const [loading, setLoading] = useState(false);
   const [result,  setResult]  = useState(null);
   const [error,   setError]   = useState(null);
 
-  const isSusp  = g.authenticity_flag !== 'Likely Genuine Grievance';
   const display = result || g;
+  const isSusp  = display.authenticity_flag !== 'Likely Genuine Grievance';
 
   const handleAnalyze = async () => {
     setLoading(true); setError(null);
     try {
-      const res = await api.analyzePost(g.post_text, g.image_ocr_text, g.id);
+      const res = await onReanalyze(g);
       setResult({ ...g, ...res.analysis, ai_summary: res.analysis?.summary });
-      if (onReanalyzed) onReanalyzed(g.id, res.analysis);
     } catch(e) { setError(e.message); }
     finally { setLoading(false); }
   };
@@ -83,7 +80,7 @@ function GrievanceWorkbench({ g, onReanalyzed }) {
         </div>
         <button onClick={handleAnalyze} disabled={loading} className="btn-primary text-xs py-1.5 px-3 flex-shrink-0">
           {loading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-          {loading ? 'Analysing...' : 'Re-run Gemini AI'}
+          {loading ? 'Analysing...' : `Re-run ${display.analysis_mode === 'gemini' ? 'Gemini' : 'local'} analysis`}
         </button>
       </div>
 
@@ -139,7 +136,7 @@ function GrievanceWorkbench({ g, onReanalyzed }) {
           </div>
           {(display.ai_summary || result?.summary) && (
             <div className="bg-violet-50 border border-violet-200 rounded-xl p-3">
-              <div className="text-xs font-bold text-violet-700 mb-1.5 flex items-center gap-1.5"><Brain size={11}/>Gemini Summary</div>
+              <div className="text-xs font-bold text-violet-700 mb-1.5 flex items-center gap-1.5"><Brain size={11}/>{display.analysis_mode === 'gemini' ? 'Gemini Summary' : 'Heuristic Summary'}</div>
               <p className="text-sm text-violet-800 italic leading-relaxed">"{display.ai_summary || result?.summary}"</p>
             </div>
           )}
@@ -160,7 +157,7 @@ function GrievanceWorkbench({ g, onReanalyzed }) {
   );
 }
 
-export default function AIVerification({ grievances }) {
+export default function AIVerification({ grievances, onReanalyze }) {
   const [filter, setFilter] = useState('all');
   const filtered = grievances.filter(g => {
     if (filter === 'suspicious') return g.authenticity_flag !== 'Likely Genuine Grievance';
@@ -199,8 +196,7 @@ export default function AIVerification({ grievances }) {
         {filtered.length === 0
           ? <div className="card p-12 text-center text-slate-400">No posts match this filter</div>
           : filtered.map(g => (
-            <GrievanceWorkbench key={g.id} g={g}
-              onReanalyzed={() => {}} />
+            <GrievanceWorkbench key={g.id} g={g} onReanalyze={onReanalyze} />
           ))}
       </div>
     </div>
