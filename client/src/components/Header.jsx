@@ -1,4 +1,4 @@
-import { Search, AlertTriangle, Layers, BarChart2 } from 'lucide-react';
+import { Search, AlertTriangle, Layers, BarChart2, Radio, Loader2 } from 'lucide-react';
 
 const PAGE_TITLES = {
   dashboard:  'Executive Dashboard',
@@ -8,7 +8,7 @@ const PAGE_TITLES = {
   resolution: 'Resolution Portal',
 };
 
-export default function Header({ activePage, stats, globalSearch, onGlobalSearch }) {
+export default function Header({ activePage, stats, globalSearch, onGlobalSearch, onSimulatePost, simulatingPost }) {
   const criticalCount  = stats?.critical ?? 0;
   const clusterCount   = stats?.cluster_count ?? 0;
   const totalPosts     = stats?.total ?? 0;
@@ -40,10 +40,16 @@ export default function Header({ activePage, stats, globalSearch, onGlobalSearch
 
       {/* Right: Live KPI Pills */}
       <div className="flex items-center gap-2 flex-shrink-0">
+        <button type="button" onClick={onSimulatePost} disabled={simulatingPost}
+          className="btn-primary whitespace-nowrap disabled:opacity-60 disabled:cursor-wait">
+          {simulatingPost ? <Loader2 size={14} className="animate-spin" /> : <Radio size={14} />}
+          <span className="hidden lg:inline">{simulatingPost ? 'Analyzing…' : 'Add Sample Report'}</span>
+          <span className="lg:hidden">{simulatingPost ? 'Adding…' : 'Add Sample'}</span>
+        </button>
         <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-full">
           <BarChart2 size={12} className="text-blue-500" />
           <span className="text-slate-800 font-bold font-mono">{totalPosts}</span>
-          <span className="text-slate-500">posts</span>
+          <span className="text-slate-500">reports</span>
         </div>
 
         <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full">

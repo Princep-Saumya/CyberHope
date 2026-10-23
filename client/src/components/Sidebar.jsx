@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { id: 'resolution',  label: 'Resolution Portal',     icon: FileCheck       },
 ];
 
-export default function Sidebar({ active, onNavigate }) {
+export default function Sidebar({ active, onNavigate, analysisMode }) {
   return (
     <aside className="w-64 min-w-[256px] bg-slate-900 text-white min-h-screen flex flex-col justify-between border-r border-slate-800 flex-shrink-0">
 
@@ -56,7 +56,7 @@ export default function Sidebar({ active, onNavigate }) {
       <div className="px-4 py-4 border-t border-slate-800 flex flex-col gap-2">
         <div className="flex items-center gap-2 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-lg">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-          Gemini 1.5 Flash Active
+          {analysisMode || 'Checking analysis mode'}
         </div>
         <div className="flex items-center gap-2 text-xs font-medium text-slate-400 bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg">
           <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">A</div>
