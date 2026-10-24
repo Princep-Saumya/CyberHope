@@ -148,4 +148,4 @@ async function searchPublicSource(source, query) {
   throw error;
 }
 
-module.exports = { getSourceStatus, searchPublicSource };
+module.exports = { getSourceStatus, searchPublicSource, searchGoogleNews, searchReddit };

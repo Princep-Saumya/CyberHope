@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import ResolutionModal from './components/ResolutionModal';
@@ -8,10 +8,12 @@ import ClusteringEngine from './pages/ClusteringEngine';
 import AIVerification from './pages/AIVerification';
 import ResolutionPortal from './pages/ResolutionPortal';
 import { useGrievances } from './hooks/useGrievances';
+import { Bell, X, ExternalLink, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 export default function App() {
   const [activePage, setActivePage]     = useState('dashboard');
   const [globalSearch, setGlobalSearch] = useState('');
+  const [pollingRealtime, setPollingRealtime] = useState(false);
 
   const {
     filters, updateFilter, resetFilters,
@@ -20,9 +22,38 @@ export default function App() {
     selectedGrievance, setSelectedGrievance,
     updateGrievanceStatus, escalateGrievance, addSampleReport, importPublicSourceItem, reanalyzeGrievance,
     getClusterSiblings,
+    isSocketConnected,
+    realtimeNotification,
+    clearNotification,
+    triggerRealtimePoll,
   } = useGrievances();
   const [simulatingPost, setSimulatingPost] = useState(false);
   const [actionNotice, setActionNotice] = useState(null);
+
+  // Auto-dismiss real-time toast after 10s
+  useEffect(() => {
+    if (realtimeNotification) {
+      const timer = setTimeout(() => {
+        clearNotification();
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [realtimeNotification, clearNotification]);
+
+  const handlePollRealtime = useCallback(async () => {
+    setPollingRealtime(true);
+    try {
+      await triggerRealtimePoll();
+      setActionNotice({
+        type: 'success',
+        text: 'Live public feeds scanned successfully across Bihar districts.',
+      });
+    } catch (e) {
+      setActionNotice({ type: 'error', text: `Feed scan failed: ${e.message}` });
+    } finally {
+      setPollingRealtime(false);
+    }
+  }, [triggerRealtimePoll]);
 
   const handleSimulatePost = useCallback(async () => {
     setSimulatingPost(true);
@@ -72,6 +103,14 @@ export default function App() {
     setActivePage(page);
   }, []);
 
+  const handleInspectIncoming = useCallback((id) => {
+    const target = grievances.find(g => g.id === id);
+    if (target) {
+      setSelectedGrievance(target);
+      clearNotification();
+    }
+  }, [grievances, setSelectedGrievance, clearNotification]);
+
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard':
@@ -106,7 +145,11 @@ export default function App() {
           onGlobalSearch={handleGlobalSearch}
           onSimulatePost={handleSimulatePost}
           simulatingPost={simulatingPost}
+          isSocketConnected={isSocketConnected}
+          onPollRealtime={handlePollRealtime}
+          pollingRealtime={pollingRealtime}
         />
+
         {actionNotice && (
           <div role="status" className={`flex-shrink-0 px-6 py-2 flex items-center justify-between gap-3 text-sm border-b ${
             actionNotice.type === 'error'
@@ -131,6 +174,66 @@ export default function App() {
           {renderPage()}
         </main>
       </div>
+
+      {/* ── Real-Time Streaming Toast Notification ── */}
+      {realtimeNotification && (
+        <aside
+          aria-label="Real-time grievance alert"
+          className="fixed bottom-6 right-6 z-50 max-w-md w-full bg-white rounded-xl shadow-2xl border-2 border-blue-500/20 p-4 animate-in slide-in-from-bottom-5 transition-all"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+              </span>
+              <span className="text-xs font-bold uppercase tracking-wider text-rose-600">
+                Live Public Report Ingested
+              </span>
+            </div>
+            <button
+              onClick={clearNotification}
+              className="text-slate-400 hover:text-slate-600 p-1"
+              title="Close notification"
+            >
+              <X size={14} />
+            </button>
+          </div>
+
+          <div className="mt-2.5">
+            <div className="flex items-center gap-2 flex-wrap mb-1.5">
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                {realtimeNotification.department}
+              </span>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                📍 {realtimeNotification.location}
+              </span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                realtimeNotification.severity >= 8
+                  ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                  : 'bg-amber-100 text-amber-800 border border-amber-300'
+              }`}>
+                Severity: {realtimeNotification.severity}/10
+              </span>
+            </div>
+            <p className="text-xs text-slate-700 line-clamp-2 leading-relaxed">
+              "{realtimeNotification.text}"
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[10px] text-slate-400">
+              Source: {realtimeNotification.platform} · {realtimeNotification.timestamp}
+            </span>
+            <button
+              onClick={() => handleInspectIncoming(realtimeNotification.id)}
+              className="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 hover:underline"
+            >
+              Inspect Ticket <ExternalLink size={12} />
+            </button>
+          </div>
+        </aside>
+      )}
 
       {/* ── Resolution Modal ── */}
       {selectedGrievance && (

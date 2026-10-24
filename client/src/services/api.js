@@ -88,4 +88,8 @@ export const api = {
   // PATCH /api/grievances/:id/escalate
   escalateGrievance: (id) =>
     request(`/grievances/${id}/escalate`, { method: 'PATCH' }),
+
+  // Real-Time Poller Endpoints
+  getRealTimeStatus: () => request('/realtime/status'),
+  triggerPollNow: () => request('/realtime/poll-now', { method: 'POST' }),
 };
