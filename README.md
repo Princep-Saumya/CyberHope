@@ -71,8 +71,8 @@ client/src/
 | UI Components | Lucide React icons + Recharts PieChart |
 | Map | Leaflet.js + react-leaflet (OpenStreetMap — light tiles) |
 | Backend | Node.js 18 + Express 4 |
-| AI Pipeline | Google Gemini 1.5 Flash (`@google/generative-ai`) |
-| Storage | In-memory store + `seed_grievances.json` fallback |
+| AI Pipeline | Groq text triage, Gemini visual analysis/text failover, deterministic heuristics |
+| Storage | SQLite database at `server/data/grievances.sqlite` |
 | Dev Tooling | concurrently (run both servers simultaneously) |
 
 ---
@@ -138,12 +138,14 @@ grievancepulse-ai/
     │   ├── grievances.js      ← Grievance and analysis API routes
     │   └── sources.js         ← Public-source status and search routes
     ├── services/
-    │   ├── geminiService.js   ← Gemini 1.5 Flash + heuristic fallback
-    │   └── publicSources.js   ← Google News RSS and Reddit OAuth search
+    │   ├── geminiService.js   ← Gemini image analysis, text fallback, heuristic fallback
+    │   ├── groqService.js     ← Rate-limited Groq text classification
+    │   ├── publicSources.js   ← Google News RSS and Reddit OAuth search
+    │   └── storeService.js    ← SQLite-backed grievance persistence
     ├── utils/
     │   └── clustering.js      ← Haversine + Jaccard clustering engine
     └── data/
-        └── seed_grievances.json  ← 20 Bihar grievance seed records
+        └── seed_grievances.json  ← legacy reference data; not loaded by the app
 ```
 
 ---
@@ -171,8 +173,9 @@ The following files are tracked in Git (everything not listed in `.gitignore`):
 ✅ server/env.example
 ✅ server/routes/grievances.js
 ✅ server/services/geminiService.js
+✅ server/services/storeService.js
 ✅ server/utils/clustering.js
-✅ server/data/seed_grievances.json
+✅ server/data/seed_grievances.json            (legacy reference data; not loaded at startup)
 
 ❌ node_modules/          (excluded — run npm run install:all)
 ❌ client/node_modules/   (excluded)
@@ -212,13 +215,14 @@ This runs `npm install` in the root, `client/`, and `server/` directories.
 # Copy the example env file to server/.env
 cp server/env.example server/.env
 
-# Open server/.env and paste your Gemini API key (optional)
+# Open server/.env and paste your Groq and Gemini API keys (optional)
+# GROQ_API_KEY=gsk_...
 # GEMINI_API_KEY=AIza...
 # PORT=3001
 # NODE_ENV=development
 ```
 
-> **No Gemini key?** The app works fully without one — a deterministic heuristic fallback handles all AI scoring. Zero unhandled exceptions.
+> Keep provider keys in `server/.env`; never put them in client code or commit them. Groq is the primary text classifier. Gemini is used for uploaded-image descriptions and as a text fallback when available. Deterministic heuristics keep reports flowing if providers are unavailable.
 
 ### 4 · Run both servers simultaneously
 
@@ -247,7 +251,11 @@ npm run build
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
-| `GEMINI_API_KEY` | *(empty)* | ❌ Optional | Google Gemini 1.5 Flash API key. Heuristic fallback active without it. |
+| `GROQ_API_KEY` | *(empty)* | ❌ Optional | Groq key for primary text triage. `Groq_API_KEY` is also recognized for existing `.env` files. |
+| `GROQ_MODEL` | `openai/gpt-oss-20b` | ❌ Optional | Groq chat model used for text classification. |
+| `GEMINI_API_KEY` | *(empty)* | ❌ Optional | Google Gemini key for uploaded-image descriptions and Groq text fallback. |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | ❌ Optional | Gemini model used for visual analysis and text fallback. |
+| `YOUTUBE_API_KEY` | *(empty)* | Optional | YouTube Data API v3 key for public video search. |
 | `REDDIT_CLIENT_ID` | *(empty)* | Optional | Reddit app client ID for public Reddit search. |
 | `REDDIT_CLIENT_SECRET` | *(empty)* | Optional | Reddit app client secret; keep it on the server. |
 | `REDDIT_USER_AGENT` | *(empty)* | Optional | Descriptive Reddit API user agent with an operator contact. |
@@ -267,18 +275,22 @@ Base URL: `http://localhost:3001`
 | `GET` | `/api/grievances/:id` | Single grievance record by ID |
 | `PATCH` | `/api/grievances/:id/status` | Update complaint status lifecycle |
 | `POST` | `/api/grievances/:id/acknowledgment` | Save an acknowledgment draft locally; does not send it externally |
-| `POST` | `/api/analyze` | Run Gemini AI analysis on post text |
+| `POST` | `/api/analyze` | Run Groq text triage, optional Gemini image description, and provider fallbacks |
 | `POST` | `/api/sample-reports` | Analyze and add a clearly labeled sample report |
 | `GET` | `/api/sources/status` | Return public-source connection status |
-| `GET` | `/api/sources/search?source=google-news&q=...` | Search current Google News RSS results for Bihar |
+| `GET` | `/api/sources/taxonomy` | Return official sector labels, category/department mappings, and quick-search terms |
+| `GET` | `/api/sources/search?source=google-news&q=...` | Search Google News RSS results published in the last 24 hours |
 | `GET` | `/api/sources/search?source=reddit&q=...` | Search recent Reddit posts using OAuth |
+| `GET` | `/api/sources/search?source=youtube&q=...` | Search recent Bihar videos through YouTube Data API v3 |
 | `POST` | `/api/grievances/import` | Analyze a selected public item and add it to grievance records |
 | `GET` | `/api/clusters` | Master ticket cluster summaries |
 | `GET` | `/api/stats` | Dashboard KPI counters |
 | `PATCH` | `/api/grievances/:id/escalate` | Escalate complaint to District Magistrate |
 | `POST` | `/api/official-response` | Generate AI official response draft |
 
-The **Add Sample Report** header button adds a clearly labeled sample Kankarbagh transformer report. In **OSINT Search**, Google News RSS can be searched without a key; it supplies headlines and excerpts, not full article text. Reddit search uses OAuth credentials configured only in `server/.env`; until configured, the interface shows that setup is required. Search results are not automatically saved or sent to Gemini: select **Analyze & Add** to classify the returned text and add it to shared grievance views. Grievance and status changes are currently held in process memory and reset when the server restarts.
+The **Add Sample Report** header button adds a clearly labeled sample Kankarbagh transformer report. Text classification uses Groq first (`GROQ_MODEL`, default `openai/gpt-oss-20b`), paced at least two seconds apart and capped locally at 14,400 attempts per UTC day. The previously suggested `llama-3.1-8b-instant` model returned HTTP 404 for this configured Groq account; the new default was selected from the account's available models and tested with a JSON triage request. A failed Groq request falls back to Gemini when available, then to the local heuristic classifier. In **AI Verification**, **Local OCR + Groq** runs Tesseract.js in the browser with English and Hindi language data. The image itself stays in the browser; only the recognized text (up to 2,000 characters) is sent to the backend for text triage. The Tesseract.js library code is installed from npm, while its WebAssembly core and language data download from jsDelivr on first use and are cached by the browser; they are not committed as model binaries to GitHub. This means image processing is local, but first-time OCR setup requires internet access. OCR extracts visible text; it does not describe non-text damage or determine authenticity. The separate **Analyze image with Gemini** action sends uploaded JPEG, PNG, or WebP bytes (up to 4 MB) only to Gemini for a brief visual description; images are not saved or sent to Groq, and arbitrary remote image URLs are not fetched. Image descriptions cannot establish authenticity or manipulation, which remains subject to human review. Gemini requests are serialized, spaced at least six seconds apart, capped at 100 attempts per UTC day, and retry transient rate/service errors once; explicit project quota exhaustion is not retried. The UI disables repeat sample submissions for five seconds and manual feed scans for six seconds; background feed scans run every 45 seconds. Per-day provider usage is persisted in the ignored `server/.provider-quotas.json` file so ordinary app restarts do not reset local caps. In **OSINT Search**, Google News RSS can be searched without a key; it supplies headlines and excerpts, not full article text. YouTube search uses the server-side `YOUTUBE_API_KEY`, enforces at least 60 seconds between API requests, caches identical searches for five minutes, limits queued searches, and caps this installation at 40 searches per UTC day (about 4,000 of the default 10,000 daily search quota units). The background poller searches YouTube once per 60 polling cycles (about every 45 minutes) and uses Google News between searches. Reddit search uses OAuth credentials configured only in `server/.env`. Search results are not automatically saved: select **Analyze & Add** to run triage and add the result to shared grievance views. Automated classifications are constrained to supported departments and categories and are triage estimates only: authenticity remains unverified unless a human explicitly marks it reviewed, severity is not increased by sentiment, and district-centroid coordinates are labeled approximate and excluded from duplicate matching. Verify claims, urgency, and location against primary evidence before action. Generated response text is a draft and must be reviewed; it is not sent automatically. Grievance records and status changes are persisted in SQLite across backend restarts.
+
+The organizer-provided OSINT taxonomy is available from `GET /api/sources/taxonomy` and in the public-source search sector selector. The supplied keyword list contains 19 sector blocks (including Government Schemes and Nal Jal as separate sectors); each is mapped to the app's existing category and department set. Analysis stores the selected sector on reports, and duplicate matching will not merge reports when both have different sectors. Background ingestion rotates one official search phrase per 45-second cycle rather than fanning out the full Boolean list, to limit external-source requests. The UI's example query uses only two terms from a selected sector; source support for Boolean syntax can vary.
 
 To enable Reddit, create an app through Reddit's developer app settings, then put its client ID, client secret, and a descriptive user agent containing a contact address in `server/.env`. Restart the backend after changing the environment file. Keep the client secret private and do not put it in frontend environment variables.
 
@@ -304,11 +316,14 @@ To enable Reddit, create an app through Reddit's developer app settings, then pu
 - **Main Canvas** — `bg-slate-50`, all cards `bg-white border-slate-200 shadow-sm`
 - **Color-coded status badges** — Received (slate), Assigned (blue), Under Investigation (amber), Resolved (emerald), Closed (muted), Escalated (rose)
 
-### 2. Initial Reference Dataset
-- 20 pre-populated Bihar grievances across 6 districts
-- 5 BPSC/exam-leak records, 8+ civic/infrastructure records, 3 bot-flagged suspicious posts
-- Search and filters return only matching records; unrelated seed records are not added to filtered results
-- Sample reports and lifecycle changes are temporary in-memory data
+### 2. Runtime Data Lifecycle
+- Grievances are stored in SQLite at `server/data/grievances.sqlite`; the database is created automatically on first server start.
+- The database persists records and lifecycle updates across server restarts. It is local to this backend instance and is ignored by Git.
+- Set `GRIEVANCE_DB_PATH` in `server/.env` to store the SQLite database at a different path.
+- The legacy `server/data/seed_grievances.json` file is not loaded at startup. Records held only in memory by older backend processes require a one-time import before those processes are stopped.
+- Reports enter the store through explicit sample submission, public-source import, or live polling.
+- Google News searches request the last 24 hours and discard items without a valid publication date or outside that window.
+- Google News results and grievance feeds are ordered newest first.
 
 ### 3. Multi-Parameter OSINT Search
 - Simultaneous filtering: hashtag (partial text), district, department, status, severity, authenticity
@@ -316,18 +331,22 @@ To enable Reddit, create an app through Reddit's developer app settings, then pu
 - Quick-filter chips: `#BPSC`, `#PatnaFloods`, `#RCD_Bihar`, Critical Only toggle
 - Toggle between table view and card grid view
 
-### 4. Gemini AI Intelligence Pipeline
-- Model: `gemini-1.5-flash`
-- Input: raw post text + image OCR context
+### 4. Dual-Provider AI Intelligence Pipeline
+- Text model: `GROQ_MODEL` from `server/.env` (defaults to the tested `openai/gpt-oss-20b`); Gemini is the secondary text provider.
+- Visual model: `GEMINI_MODEL` from `server/.env` (defaults to `gemini-3.8-flash`); only explicit user-uploaded image bytes are sent.
+- Text input: post text + optional OCR context; raw image bytes are never sent to Groq.
+- Image upload: JPEG, PNG, or WebP, maximum 4 MB; bytes are used for the request and not persisted.
+- Local OCR: Tesseract.js browser worker with English + Hindi; image data stays in the browser and extracted text is sent for triage.
 - Output: department, category, severity (1–10), authenticity risk (0–100), flag, location, executive summary
-- Full heuristic fallback when key absent or API down
+- Provider path: Groq → Gemini text fallback → heuristic; image observations use Gemini or remain unavailable/unverified.
+- Provider requests are paced, capped, and counted in the ignored local quota-state file.
 - No separate local NLP package/model is installed: the fallback is a deterministic English keyword-rules classifier, not a trained NLP model. Clustering uses local Jaccard token overlap, hashtags, and coordinates; the UI shows which analysis path produced a result.
 
 ### 5. Duplicate Clustering Algorithm
 - **Haversine** geo-proximity: records within 500m → same Master Ticket
 - **Jaccard** text similarity: score ≥ 0.70 → clustered
 - **Hashtag overlap**: 2+ shared hashtags → clustered
-- New posts must also match department and category; seeded clusters are pre-grouped examples, not model-confidence scores
+- New posts must also match department and category; cluster IDs are duplicate-group identifiers, not model-confidence scores
 - Similarity bar visualisation (Geo / Text / Hashtag %)
 
 ### 6. Resolution Portal + SLA Engine
