@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import {
   X, Brain, MapPin, Building2, User, Calendar,
   AlertTriangle, CheckCircle2, Copy, ChevronRight,
-  Loader2, Image as ImageIcon
+  Loader2, Image as ImageIcon, ExternalLink
 } from 'lucide-react';
 import { formatDateTime } from '../utils/dateUtils';
 
@@ -142,15 +142,26 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
               <p className="text-sm text-slate-700 leading-relaxed">{grievance.post_text}</p>
             </div>
 
-            {/* Image */}
+            {/* Image & Video Evidence */}
             {grievance.image_url && (
-              <div className="rounded-xl overflow-hidden border border-slate-200">
+              <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-900 group">
                 <img
                   src={grievance.image_url}
                   alt="Evidence"
-                  className="w-full h-40 object-cover"
+                  className="w-full h-48 object-cover"
                   onError={e => { e.target.style.display = 'none'; }}
                 />
+                {grievance.source_url && (
+                  <a
+                    href={grievance.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="absolute top-2.5 right-2.5 px-3 py-1 text-xs font-semibold text-white bg-slate-900/80 hover:bg-slate-900 rounded-lg flex items-center gap-1.5 backdrop-blur border border-white/20 transition-all shadow-md"
+                  >
+                    <span>{grievance.platform === 'YouTube' ? 'Watch on YouTube' : 'View Source'}</span>
+                    <ExternalLink size={12} />
+                  </a>
+                )}
                 {grievance.image_ocr_text && (
                   <div className="px-3 py-2 bg-amber-50 border-t border-amber-200 flex gap-2 items-start">
                     <ImageIcon size={11} className="text-amber-600 flex-shrink-0 mt-0.5" />

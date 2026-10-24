@@ -134,7 +134,7 @@ router.get('/stats', (_req, res) => {
 
 // POST /api/grievances/import — public source import
 router.post('/grievances/import', async (req, res) => {
-  const { source, source_id, source_url, author, published_at, post_text } = req.body;
+  const { source, source_id, source_url, author, published_at, post_text, image_url, thumbnail_url } = req.body;
   if (!['Google News', 'Reddit', 'YouTube', 'Public Forum'].includes(source)) {
     return res.status(400).json({ error: 'Invalid source provider.' });
   }
@@ -156,7 +156,7 @@ router.post('/grievances/import', async (req, res) => {
         ? new Date(published_at).toISOString()
         : new Date().toISOString(),
       post_text: post_text.trim(),
-      image_url: null,
+      image_url: image_url || thumbnail_url || null,
       image_ocr_text: '',
       location_tagged: analysis.extracted_location || 'Bihar',
       coordinates: analysis.coordinates,

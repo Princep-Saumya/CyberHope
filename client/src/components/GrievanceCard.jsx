@@ -44,7 +44,7 @@ export default function GrievanceCard({ grievance, isSelected, onClick, clusterC
     id, platform, author_handle, timestamp, post_text,
     location_tagged, hashtags, department, category,
     severity_score, authenticity_risk_score, authenticity_flag,
-    status, duplicate_cluster_id,
+    status, duplicate_cluster_id, image_url,
   } = grievance;
 
   const platformStyle = PLATFORM_COLORS[platform] || 'bg-gray-800 text-gray-300 border-gray-700';
@@ -81,6 +81,23 @@ export default function GrievanceCard({ grievance, isSelected, onClick, clusterC
           {formatDistanceToNow(timestamp)}
         </span>
       </div>
+
+      {/* Media thumbnail if present */}
+      {image_url && (
+        <div className="relative mb-2.5 h-28 rounded-lg overflow-hidden border border-slate-700/60 bg-slate-900">
+          <img
+            src={image_url}
+            alt="Evidence"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            onError={e => { e.target.style.display = 'none'; }}
+          />
+          {platform === 'YouTube' && (
+            <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[9px] font-bold text-white bg-red-600/90 rounded shadow">
+              ▶ VIDEO
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Post text */}
       <p className="text-gray-300 text-sm leading-relaxed line-clamp-2 mb-3">{post_text}</p>

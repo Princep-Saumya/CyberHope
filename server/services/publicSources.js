@@ -52,9 +52,9 @@ function getSourceStatus() {
     },
     gemini: {
       configured: geminiConfigured,
-      label: 'Google Gemini 1.5 Flash (Multimodal & Sentiment)',
+      label: 'Google Gemini AI (Multimodal & Sentiment)',
       free: true,
-      status: geminiConfigured ? 'Active (Gemini 1.5 Flash)' : 'Running on Heuristic Fallback',
+      status: geminiConfigured ? `Active (${process.env.GEMINI_MODEL || 'Gemini AI'})` : 'Running on Heuristic Fallback',
       reason: geminiConfigured ? null : 'GEMINI_API_KEY not configured in server/.env',
     },
   };

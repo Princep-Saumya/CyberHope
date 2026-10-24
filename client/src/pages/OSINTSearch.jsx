@@ -66,6 +66,7 @@ function PublicSourceSearch({ onImportSourceItem }) {
         author: item.author,
         published_at: item.published_at,
         post_text: item.text || item.title,
+        thumbnail_url: item.thumbnail_url,
       });
       setItemActions(prev => ({
         ...prev,
@@ -92,7 +93,7 @@ function PublicSourceSearch({ onImportSourceItem }) {
             <Radio size={15} className="text-blue-600" /> Public Source Search
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Search public coverage and posts. Google News provides headlines and excerpts; analysis uses the returned text, not the full article.
+            Search live public coverage, news feeds, and citizen videos across Bihar. Analyze any item with Gemini AI to ingest it into official grievance tracking.
           </p>
         </div>
         {selectedStatus && (
@@ -108,15 +109,16 @@ function PublicSourceSearch({ onImportSourceItem }) {
       </div>
 
       <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
-        <select value={source} onChange={event => setSource(event.target.value)} className="select-field sm:w-44">
-          <option value="google-news">Google News</option>
-          <option value="reddit">Reddit</option>
+        <select value={source} onChange={event => setSource(event.target.value)} className="select-field sm:w-52">
+          <option value="google-news">Google News (RSS)</option>
+          <option value="youtube">YouTube (Videos)</option>
+          <option value="reddit">Reddit (r/bihar)</option>
         </select>
         <input
           value={query}
           onChange={event => setQuery(event.target.value)}
           maxLength={160}
-          placeholder="Search Bihar civic issues, e.g. Patna water supply"
+          placeholder="Search Bihar civic issues, e.g. Patna water supply or Bihar road pothole"
           className="input-field flex-1"
           required
         />
@@ -137,33 +139,41 @@ function PublicSourceSearch({ onImportSourceItem }) {
           {items.map(item => {
             const action = itemActions[item.id];
             return (
-              <article key={item.id} className="rounded-lg border border-slate-200 p-3 bg-slate-50">
+              <article key={item.id} className="rounded-lg border border-slate-200 p-3 bg-slate-50 flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <a href={item.url || undefined} target="_blank" rel="noreferrer"
-                      className="text-sm font-semibold text-blue-700 hover:underline">
-                      {item.title}
-                    </a>
-                    <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-2">
-                      <span>{item.source}{item.subreddit ? ` · ${item.subreddit}` : ''}</span>
-                      <span>{item.author}</span>
-                      {item.published_at && <span>{formatDistanceToNow(item.published_at)}</span>}
+                  <div className="flex gap-3 min-w-0">
+                    {item.thumbnail_url && (
+                      <div className="relative shrink-0 w-24 h-16 rounded overflow-hidden bg-slate-900 border border-slate-200">
+                        <img src={item.thumbnail_url} alt={item.title} className="w-full h-full object-cover" />
+                        <span className="absolute bottom-1 right-1 px-1 py-0.5 text-[9px] font-bold text-white bg-red-600/90 rounded">VIDEO</span>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <a href={item.url || undefined} target="_blank" rel="noreferrer"
+                        className="text-sm font-semibold text-blue-700 hover:underline line-clamp-2">
+                        {item.title}
+                      </a>
+                      <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-2">
+                        <span className="font-medium text-slate-700">{item.source}{item.subreddit ? ` · ${item.subreddit}` : ''}</span>
+                        <span>{item.author}</span>
+                        {item.published_at && <span>{formatDistanceToNow(item.published_at)}</span>}
+                      </div>
+                      {item.text && <p className="text-xs text-slate-600 mt-1.5 line-clamp-2">{item.text}</p>}
                     </div>
-                    {item.text && <p className="text-xs text-slate-600 mt-2 line-clamp-3">{item.text}</p>}
                   </div>
                   <button type="button" onClick={() => handleImport(item)}
                     disabled={!item.url || action?.state === 'loading' || action?.state === 'saved'}
-                    className="btn-secondary text-xs whitespace-nowrap disabled:opacity-60">
+                    className="btn-secondary text-xs whitespace-nowrap shrink-0 disabled:opacity-60">
                     {action?.state === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Newspaper size={12} />}
                     {action?.state === 'saved' ? (action.duplicate ? 'Already added' : 'Added to reports') : 'Analyze & Add'}
                   </button>
                 </div>
                 {action?.state === 'saved' && (
-                  <p className="mt-2 text-xs text-emerald-700">
-                    {action.duplicate ? 'This source link was already recorded.' : `${action.department} · Severity ${action.severity}/10 · ${action.mode === 'gemini' ? 'Gemini' : 'Local heuristic'} analysis`}
+                  <p className="text-xs text-emerald-700 font-medium">
+                    {action.duplicate ? 'This source link was already recorded.' : `${action.department} · Severity ${action.severity}/10 · ${action.mode === 'gemini' ? 'Gemini AI' : 'Local Heuristic'} analysis`}
                   </p>
                 )}
-                {action?.state === 'error' && <p role="alert" className="mt-2 text-xs text-rose-700">{action.message}</p>}
+                {action?.state === 'error' && <p role="alert" className="text-xs text-rose-700">{action.message}</p>}
               </article>
             );
           })}

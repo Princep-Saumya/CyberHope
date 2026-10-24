@@ -192,11 +192,14 @@ async function analyzePost(postText, imageOcrText = '') {
     return heuristicFallback(postText, imageOcrText);
   }
 
-  const modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: modelName });
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { responseMimeType: 'application/json' },
+    });
 
     const prompt = `Analyze the following Bihar public social grievance post:
 Text: ${postText}

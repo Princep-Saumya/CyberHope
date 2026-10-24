@@ -3,7 +3,7 @@
  * Continuously discovers and ingests live public grievances, runs AI analysis, and broadcasts via WebSockets.
  */
 
-const { searchGoogleNews, searchReddit } = require('./publicSources');
+const { searchGoogleNews, searchReddit, searchYouTube } = require('./publicSources');
 const { analyzePost } = require('./geminiService');
 const { addGrievance, calcStats } = require('./storeService');
 
@@ -29,6 +29,7 @@ let pollingStats = {
   total_items_found: 0,
   total_ingested_live: 0,
   current_query: '',
+  current_source: 'Google News',
 };
 
 async function pollOnce() {
@@ -41,12 +42,30 @@ async function pollOnce() {
   pollingStats.total_polls++;
 
   try {
-    const newsResult = await searchGoogleNews(query).catch(err => {
-      console.warn(`[RealTimePoller] News search error (${query}):`, err.message);
-      return { items: [] };
-    });
+    let sourceResult = { items: [] };
 
-    const items = newsResult.items || [];
+    // Alternate between YouTube, Reddit, and Google News
+    if (process.env.YOUTUBE_API_KEY && pollingStats.total_polls % 2 === 1) {
+      pollingStats.current_source = 'YouTube Data API v3';
+      sourceResult = await searchYouTube(query).catch(err => {
+        console.warn(`[RealTimePoller] YouTube search error (${query}):`, err.message);
+        return { items: [] };
+      });
+    } else {
+      pollingStats.current_source = 'Google News RSS';
+      sourceResult = await searchGoogleNews(query).catch(err => {
+        console.warn(`[RealTimePoller] News search error (${query}):`, err.message);
+        return { items: [] };
+      });
+    }
+
+    // Fallback if empty
+    if (!sourceResult.items || sourceResult.items.length === 0) {
+      sourceResult = await searchGoogleNews(query).catch(() => ({ items: [] }));
+      pollingStats.current_source = 'Google News RSS';
+    }
+
+    const items = sourceResult.items || [];
     pollingStats.total_items_found += items.length;
 
     let newlyIngestedCount = 0;
@@ -64,7 +83,7 @@ async function pollOnce() {
         author_handle: item.author ? (item.author.startsWith('@') ? item.author : `@${item.author.replace(/\s+/g, '_').toLowerCase()}`) : '@bihar_live_desk',
         timestamp: item.published_at || new Date().toISOString(),
         post_text: postText,
-        image_url: null,
+        image_url: item.thumbnail_url || item.image_url || null,
         image_ocr_text: '',
         location_tagged: analysis.extracted_location || 'Bihar',
         coordinates: analysis.coordinates,
