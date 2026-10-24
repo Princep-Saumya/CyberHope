@@ -21,6 +21,42 @@ const {
 } = require('../services/storeService');
 const { getPollerStatus, triggerManualPoll } = require('../services/realTimePoller');
 
+const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+
+function getImagePayload(imageData, imageMimeType) {
+  if (imageData === undefined && imageMimeType === undefined) return null;
+  if (typeof imageData !== 'string' || typeof imageMimeType !== 'string' || !ALLOWED_IMAGE_MIME_TYPES.has(imageMimeType)) {
+    const error = new Error('Upload an image in JPEG, PNG, or WebP format.');
+    error.status = 400;
+    throw error;
+  }
+  if (!imageData || imageData.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 + 4 || imageData.length % 4 !== 0
+    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(imageData)) {
+    const error = new Error('Image data must be valid base64 and no larger than 4 MB.');
+    error.status = 400;
+    throw error;
+  }
+  const bytes = Buffer.from(imageData, 'base64');
+  if (!bytes.length || bytes.length > MAX_IMAGE_BYTES || bytes.toString('base64') !== imageData) {
+    const error = new Error('Image data must be valid base64 and no larger than 4 MB.');
+    error.status = 400;
+    throw error;
+  }
+  const isJpeg = imageMimeType === 'image/jpeg' && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const isPng = imageMimeType === 'image/png' && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const isWebp = imageMimeType === 'image/webp'
+    && bytes.length >= 12
+    && bytes.toString('ascii', 0, 4) === 'RIFF'
+    && bytes.toString('ascii', 8, 12) === 'WEBP';
+  if (!isJpeg && !isPng && !isWebp) {
+    const error = new Error('Image content does not match its JPEG, PNG, or WebP type.');
+    error.status = 400;
+    throw error;
+  }
+  return { base64: imageData, mimeType: imageMimeType };
+}
+
 // ─── Real-Time Stream Status & Trigger ────────────────────────────────────────
 
 router.get('/realtime/status', (_req, res) => {
@@ -32,7 +68,7 @@ router.post('/realtime/poll-now', async (_req, res) => {
     const status = await triggerManualPoll();
     res.json({ success: true, message: 'Poll cycle triggered', status });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -94,14 +130,20 @@ router.post('/grievances/:id/acknowledgment', (req, res) => {
   res.json({ success: true, record: updated, delivery: 'recorded' });
 });
 
-// POST /api/analyze — Gemini AI analysis pipeline
+// POST /api/analyze — Groq text triage with Gemini fallback and optional Gemini image analysis
 router.post('/analyze', async (req, res) => {
-  const { post_text, image_ocr_text, grievance_id } = req.body;
+  const { post_text, image_ocr_text, image_data, image_mime_type, grievance_id } = req.body;
 
-  if (!post_text) return res.status(400).json({ error: 'post_text is required' });
+  if (typeof post_text !== 'string' || !post_text.trim() || post_text.length > 4000) {
+    return res.status(400).json({ error: 'post_text must contain 1 to 4000 characters.' });
+  }
+  if (image_ocr_text !== undefined && (typeof image_ocr_text !== 'string' || image_ocr_text.length > 2000)) {
+    return res.status(400).json({ error: 'image_ocr_text must be a string of at most 2000 characters.' });
+  }
 
   try {
-    const analysis = await analyzePost(post_text, image_ocr_text || '');
+    const image = getImagePayload(image_data, image_mime_type);
+    const analysis = await analyzePost(post_text.trim(), image_ocr_text || '', { image });
 
     if (grievance_id) {
       updateGrievanceAnalysis(grievance_id, analysis);
@@ -109,7 +151,7 @@ router.post('/analyze', async (req, res) => {
 
     res.json({ success: true, analysis });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 
@@ -134,7 +176,18 @@ router.get('/stats', (_req, res) => {
 
 // POST /api/grievances/import — public source import
 router.post('/grievances/import', async (req, res) => {
-  const { source, source_id, source_url, author, published_at, post_text, image_url, thumbnail_url } = req.body;
+  const {
+    source,
+    source_id,
+    source_url,
+    author,
+    published_at,
+    post_text,
+    image_url,
+    thumbnail_url,
+    image_data,
+    image_mime_type,
+  } = req.body;
   if (!['Google News', 'Reddit', 'YouTube', 'Public Forum'].includes(source)) {
     return res.status(400).json({ error: 'Invalid source provider.' });
   }
@@ -146,7 +199,8 @@ router.post('/grievances/import', async (req, res) => {
   }
 
   try {
-    const analysis = await analyzePost(post_text.trim());
+    const image = getImagePayload(image_data, image_mime_type);
+    const analysis = await analyzePost(post_text.trim(), '', { image });
     const id = `EXT-${crypto.randomUUID()}`;
     const record = {
       id,
@@ -160,8 +214,11 @@ router.post('/grievances/import', async (req, res) => {
       image_ocr_text: '',
       location_tagged: analysis.extracted_location || 'Bihar',
       coordinates: analysis.coordinates,
+      coordinates_approximate: analysis.coordinates_approximate,
       hashtags: [...new Set(post_text.match(/#[\p{L}\p{N}_]+/gu) || [])],
       department: analysis.department,
+      sector: analysis.sector,
+      sector_label: analysis.sector_label,
       category: analysis.category,
       severity_score: analysis.severity_score,
       priority_score: analysis.priority_score,
@@ -173,20 +230,17 @@ router.post('/grievances/import', async (req, res) => {
       duplicate_cluster_id: null,
       ai_summary: analysis.summary,
       analysis_mode: analysis.analysis_mode,
+      media_analysis_status: analysis.media_analysis_status || null,
+      media_observation: analysis.media_observation || null,
       source_id: typeof source_id === 'string' ? source_id.slice(0, 200) : null,
       source_url,
       imported_at: new Date().toISOString(),
-      public_engagement: {
-        shares: Math.floor(Math.random() * 30) + 2,
-        comments: Math.floor(Math.random() * 12) + 1,
-        likes: Math.floor(Math.random() * 50) + 5,
-      },
     };
 
     const { record: savedRecord, duplicate } = addGrievance(record);
     res.status(201).json({ success: true, duplicate, record: savedRecord, analysis });
   } catch (error) {
-    res.status(502).json({ error: `Could not analyze this source item: ${error.message}` });
+    res.status(error.status || 502).json({ error: `Could not analyze this source item: ${error.message}` });
   }
 });
 
@@ -212,8 +266,11 @@ router.post('/sample-reports', async (req, res) => {
         ? location_tagged.trim().slice(0, 120)
         : analysis.extracted_location,
       coordinates: coordinates || analysis.coordinates,
+      coordinates_approximate: analysis.coordinates_approximate,
       hashtags: hashtags || [],
       department: analysis.department,
+      sector: analysis.sector,
+      sector_label: analysis.sector_label,
       category: analysis.category,
       severity_score: analysis.severity_score,
       priority_score: analysis.priority_score,
