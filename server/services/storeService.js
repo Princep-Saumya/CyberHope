@@ -190,7 +190,9 @@ function calcStats(records) {
         return acc;
       }, {})
     ).map(([name, count]) => ({ name, count })),
-    analysis_mode: process.env.GEMINI_API_KEY ? 'Gemini 1.5 Flash AI Active' : 'Heuristic Engine (Offline Active)',
+    analysis_mode: process.env.GEMINI_API_KEY
+      ? `Gemini AI Active (${(process.env.GEMINI_MODEL || 'gemini-3.5-flash').replace('models/', '')})`
+      : 'Heuristic Engine (Offline Active)',
   };
 }
 
