@@ -192,9 +192,11 @@ async function analyzePost(postText, imageOcrText = '') {
     return heuristicFallback(postText, imageOcrText);
   }
 
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const prompt = `Analyze the following Bihar public social grievance post:
 Text: ${postText}
@@ -233,7 +235,7 @@ Return raw JSON strictly without code fences:
       sentiment_score: parsed.sentiment_score ?? -0.5,
       sentiment_label: parsed.sentiment_label || 'High Distress',
       summary: parsed.summary || postText.slice(0, 100),
-      analysis_mode: 'gemini-1.5-flash',
+      analysis_mode: modelName,
     };
   } catch (err) {
     console.error('Gemini API error, falling back to heuristics:', err.message);
@@ -260,9 +262,11 @@ async function generateOfficialResponse(grievance) {
     return { response: heuristicResponse, source: 'template' };
   }
 
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const prompt = `You are an official Bihar Government communications officer. Generate a formal, empathetic, and action-oriented official government response for this public grievance.
 Grievance ID: ${grievance.id}
@@ -278,7 +282,7 @@ Requirements:
 - Keep under 110 words without markdown fences.`;
 
     const result = await model.generateContent(prompt);
-    return { response: result.response.text().trim(), source: 'gemini' };
+    return { response: result.response.text().trim(), source: modelName };
   } catch (err) {
     return { response: heuristicResponse, source: 'template' };
   }
