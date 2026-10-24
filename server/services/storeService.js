@@ -1,26 +1,89 @@
 /**
  * GrievancePulse AI — Central Store Service
- * In-memory state manager with seed persistence & clustering synchronization.
+ * SQLite-backed state manager with clustering synchronization.
  */
 
+const fs = require('fs');
 const path = require('path');
+const Database = require('better-sqlite3');
 const { clusterGrievances, getMasterTickets } = require('../utils/clustering');
+const { VERIFIED_GENUINE_FLAG, FLAGGED_SUSPICIOUS_FLAG } = require('../utils/verification');
 
-const SEED_PATH = path.join(__dirname, '../data/seed_grievances.json');
+const databasePath = process.env.GRIEVANCE_DB_PATH
+  ? path.resolve(process.env.GRIEVANCE_DB_PATH)
+  : path.join(__dirname, '../data/grievances.sqlite');
+
+fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+
+const database = new Database(databasePath);
+database.pragma('journal_mode = WAL');
+database.pragma('busy_timeout = 5000');
+database.exec(`
+  CREATE TABLE IF NOT EXISTS grievances (
+    id TEXT PRIMARY KEY,
+    source_url TEXT,
+    timestamp TEXT,
+    record_json TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_grievances_source_url ON grievances(source_url);
+`);
+
+const saveRecordStatement = database.prepare(`
+  INSERT INTO grievances (id, source_url, timestamp, record_json)
+  VALUES (@id, @source_url, @timestamp, @record_json)
+  ON CONFLICT(id) DO UPDATE SET
+    source_url = excluded.source_url,
+    timestamp = excluded.timestamp,
+    record_json = excluded.record_json
+`);
+const saveRecordsTransaction = database.transaction(records => {
+  for (const record of records) {
+    saveRecordStatement.run({
+      id: record.id,
+      source_url: record.source_url || null,
+      timestamp: record.timestamp || null,
+      record_json: JSON.stringify(record),
+    });
+  }
+});
+
 let grievanceStore = [];
 let isInitialized = false;
 
+function persistRecords(records) {
+  saveRecordsTransaction(records);
+}
+
+function persistRecord(record) {
+  saveRecordStatement.run({
+    id: record.id,
+    source_url: record.source_url || null,
+    timestamp: record.timestamp || null,
+    record_json: JSON.stringify(record),
+  });
+}
+
 function initStore() {
   if (isInitialized) return grievanceStore;
-  grievanceStore = [];
+
+  grievanceStore = database.prepare('SELECT record_json FROM grievances').all().map(row => {
+    try {
+      return JSON.parse(row.record_json);
+    } catch (error) {
+      throw new Error(`Could not load a grievance record from SQLite: ${error.message}`);
+    }
+  });
+  grievanceStore = clusterGrievances(grievanceStore);
+  persistRecords(grievanceStore);
   isInitialized = true;
-  console.log(`✅ Memory store initialized (Zero demo data. Ready for 100% real-time data)`);
+  console.log(`✅ SQLite store initialized (${grievanceStore.length} persisted records)`);
   return grievanceStore;
 }
 
 function clearStore() {
+  database.prepare('DELETE FROM grievances').run();
   grievanceStore = [];
-  console.log('🧹 Memory store cleared to 0 records.');
+  console.log('🧹 SQLite store cleared to 0 records.');
   return grievanceStore;
 }
 
@@ -32,6 +95,14 @@ function getStore() {
 
 function getGrievance(id) {
   return grievanceStore.find(g => g.id === id);
+}
+
+function compareByNewestTimestamp(a, b) {
+  const aTimestamp = Date.parse(a.timestamp);
+  const bTimestamp = Date.parse(b.timestamp);
+  if (!Number.isFinite(aTimestamp)) return Number.isFinite(bTimestamp) ? 1 : 0;
+  if (!Number.isFinite(bTimestamp)) return -1;
+  return bTimestamp - aTimestamp;
 }
 
 function fetchGrievances(filters = {}) {
@@ -68,20 +139,21 @@ function fetchGrievances(filters = {}) {
   }
 
   if (authenticity === 'genuine') {
-    results = results.filter(g => g.authenticity_flag === 'Likely Genuine Grievance');
+    results = results.filter(g => g.authenticity_flag === VERIFIED_GENUINE_FLAG);
   } else if (authenticity === 'suspicious') {
-    results = results.filter(g => g.authenticity_flag !== 'Likely Genuine Grievance');
+    results = results.filter(g => g.authenticity_flag === FLAGGED_SUSPICIOUS_FLAG);
+  } else if (authenticity === 'unverified') {
+    results = results.filter(g => ![VERIFIED_GENUINE_FLAG, FLAGGED_SUSPICIOUS_FLAG].includes(g.authenticity_flag));
   }
 
   if (sentiment && sentiment.trim() && sentiment !== 'All') {
     results = results.filter(g => g.sentiment_label === sentiment);
   }
 
-  return results;
+  return results.sort(compareByNewestTimestamp);
 }
 
 function addGrievance(newRecord) {
-  // Check if identical source URL or ID exists
   const existing = grievanceStore.find(
     g => (g.source_url && g.source_url === newRecord.source_url) || g.id === newRecord.id
   );
@@ -89,9 +161,9 @@ function addGrievance(newRecord) {
     return { record: existing, duplicate: true };
   }
 
-  // Prepend to list and re-cluster
-  const updatedList = [newRecord, ...grievanceStore];
-  grievanceStore = clusterGrievances(updatedList);
+  const updatedList = clusterGrievances([newRecord, ...grievanceStore]);
+  persistRecords(updatedList);
+  grievanceStore = updatedList;
 
   const savedRecord = grievanceStore.find(g => g.id === newRecord.id);
   return { record: savedRecord || newRecord, duplicate: false };
@@ -100,12 +172,14 @@ function addGrievance(newRecord) {
 function updateGrievanceStatus(id, status) {
   const idx = grievanceStore.findIndex(g => g.id === id);
   if (idx === -1) return null;
-  grievanceStore[idx] = {
+  const updatedRecord = {
     ...grievanceStore[idx],
     status,
     updated_at: new Date().toISOString(),
   };
-  return grievanceStore[idx];
+  persistRecord(updatedRecord);
+  grievanceStore[idx] = updatedRecord;
+  return updatedRecord;
 }
 
 function recordAcknowledgment(id, message) {
@@ -119,35 +193,48 @@ function recordAcknowledgment(id, message) {
     by: 'Operator',
     note: 'Official acknowledgment saved; ready for citizen dispatch.',
   };
-
-  grievanceStore[idx] = {
+  const updatedRecord = {
     ...grievanceStore[idx],
     acknowledgment: { message: message.trim(), recorded_at: timestamp, delivery: 'recorded' },
     audit_log: [...(grievanceStore[idx].audit_log || []), auditEntry],
   };
 
-  return grievanceStore[idx];
+  persistRecord(updatedRecord);
+  grievanceStore[idx] = updatedRecord;
+  return updatedRecord;
 }
 
 function updateGrievanceAnalysis(id, analysis) {
   const idx = grievanceStore.findIndex(g => g.id === id);
   if (idx === -1) return null;
-
-  grievanceStore[idx] = {
-    ...grievanceStore[idx],
+  const existing = grievanceStore[idx];
+  const updatedRecord = {
+    ...existing,
     department: analysis.department,
+    sector: analysis.sector ?? existing.sector,
+    sector_label: analysis.sector_label ?? existing.sector_label,
     category: analysis.category,
     severity_score: analysis.severity_score,
+    priority_score: analysis.priority_score,
     authenticity_risk_score: analysis.authenticity_risk_score,
     authenticity_flag: analysis.authenticity_flag,
-    sentiment_score: analysis.sentiment_score ?? grievanceStore[idx].sentiment_score,
-    sentiment_label: analysis.sentiment_label ?? grievanceStore[idx].sentiment_label,
+    location_tagged: analysis.extracted_location || existing.location_tagged,
+    coordinates: analysis.coordinates ?? existing.coordinates,
+    coordinates_approximate: analysis.coordinates_approximate ?? existing.coordinates_approximate,
+    sentiment_score: analysis.sentiment_score ?? existing.sentiment_score,
+    sentiment_label: analysis.sentiment_label ?? existing.sentiment_label,
+    image_ocr_text: analysis.image_ocr_text ?? existing.image_ocr_text,
     ai_summary: analysis.summary,
     analysis_mode: analysis.analysis_mode,
+    media_analysis_status: analysis.media_analysis_status ?? existing.media_analysis_status,
+    media_observation: analysis.media_observation ?? existing.media_observation,
+    media_analysis_mode: analysis.media_analysis_mode ?? existing.media_analysis_mode,
     ai_analyzed_at: new Date().toISOString(),
   };
 
-  return grievanceStore[idx];
+  persistRecord(updatedRecord);
+  grievanceStore[idx] = updatedRecord;
+  return updatedRecord;
 }
 
 function calcStats(records) {
@@ -155,7 +242,7 @@ function calcStats(records) {
   const clusters = getMasterTickets(allRecords);
   const duplicatesCount = clusters.reduce((sum, c) => sum + (c.member_count || 1), 0);
 
-  const realTimeFeedCount = allRecords.filter(g => g.is_realtime_stream || g.platform === 'Google News' || g.platform === 'Reddit').length;
+  const realTimeFeedCount = allRecords.filter(g => g.is_realtime_stream || ['Google News', 'Reddit', 'YouTube'].includes(g.platform)).length;
 
   return {
     total: allRecords.length,
@@ -164,8 +251,9 @@ function calcStats(records) {
     critical: allRecords.filter(g => g.severity_score >= 8).length,
     duplicates_clustered: duplicatesCount,
     cluster_count: clusters.length,
-    genuine: allRecords.filter(g => g.authenticity_flag === 'Likely Genuine Grievance').length,
-    suspicious: allRecords.filter(g => g.authenticity_flag !== 'Likely Genuine Grievance').length,
+    genuine: allRecords.filter(g => g.authenticity_flag === VERIFIED_GENUINE_FLAG).length,
+    suspicious: allRecords.filter(g => g.authenticity_flag === FLAGGED_SUSPICIOUS_FLAG).length,
+    unverified: allRecords.filter(g => ![VERIFIED_GENUINE_FLAG, FLAGGED_SUSPICIOUS_FLAG].includes(g.authenticity_flag)).length,
     sentiment_breakdown: {
       critical_outrage: allRecords.filter(g => (g.sentiment_score ?? 0) <= -0.7).length,
       distressed: allRecords.filter(g => (g.sentiment_score ?? 0) > -0.7 && (g.sentiment_score ?? 0) <= -0.3).length,
@@ -190,9 +278,11 @@ function calcStats(records) {
         return acc;
       }, {})
     ).map(([name, count]) => ({ name, count })),
-    analysis_mode: process.env.GEMINI_API_KEY
-      ? `Gemini AI Active (${(process.env.GEMINI_MODEL || 'gemini-3.5-flash').replace('models/', '')})`
-      : 'Heuristic Engine (Offline Active)',
+    analysis_mode: process.env.GROQ_API_KEY || process.env.Groq_API_KEY
+      ? `Groq ${process.env.GROQ_MODEL || 'openai/gpt-oss-20b'} text triage · Gemini image analysis`
+      : process.env.GEMINI_API_KEY
+        ? 'Gemini text fallback · heuristic fallback enabled'
+        : 'Heuristic Engine (Offline Active)',
   };
 }
 

@@ -11,6 +11,9 @@ client/dist
 .env
 client/.env
 server/.env
+server/.provider-quotas.json
+server/.provider-quotas.json.tmp
+server/data/grievances.sqlite*
 
 # Logs
 *.log
