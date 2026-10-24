@@ -12,6 +12,7 @@ const {
   getStore,
   getGrievance,
   fetchGrievances,
+  clearStore,
   addGrievance,
   updateGrievanceStatus,
   recordAcknowledgment,
@@ -33,6 +34,14 @@ router.post('/realtime/poll-now', async (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+router.post('/realtime/clear', (req, res) => {
+  clearStore();
+  if (req.io) {
+    req.io.emit('store_cleared', { stats: calcStats() });
+  }
+  res.json({ success: true, message: 'All demo and existing records deleted. Store is completely clean.' });
 });
 
 // ─── Grievance CRUD Endpoints ─────────────────────────────────────────────────

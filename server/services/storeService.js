@@ -12,27 +12,15 @@ let isInitialized = false;
 
 function initStore() {
   if (isInitialized) return grievanceStore;
-  try {
-    const raw = require(SEED_PATH);
-    const normalized = raw.map(record => ({
-      ...record,
-      is_reference_record: true,
-      sentiment_score: record.sentiment_score ?? (record.severity_score >= 8 ? -0.85 : -0.45),
-      sentiment_label: record.sentiment_label ?? (record.severity_score >= 8 ? 'Critical Outrage' : 'Moderate Concern'),
-      priority_score: record.priority_score ?? (record.severity_score * 10),
-      public_engagement: record.public_engagement || {
-        shares: Math.floor(Math.random() * 250) + 10,
-        comments: Math.floor(Math.random() * 80) + 5,
-        likes: Math.floor(Math.random() * 400) + 20,
-      },
-    }));
-    grievanceStore = clusterGrievances(normalized);
-    isInitialized = true;
-    console.log(`✅ Loaded ${grievanceStore.length} seed grievances into memory store`);
-  } catch (err) {
-    console.error('❌ Failed to load seed data:', err.message);
-    grievanceStore = [];
-  }
+  grievanceStore = [];
+  isInitialized = true;
+  console.log(`✅ Memory store initialized (Zero demo data. Ready for 100% real-time data)`);
+  return grievanceStore;
+}
+
+function clearStore() {
+  grievanceStore = [];
+  console.log('🧹 Memory store cleared to 0 records.');
   return grievanceStore;
 }
 
@@ -208,6 +196,7 @@ function calcStats(records) {
 
 module.exports = {
   initStore,
+  clearStore,
   getStore,
   getGrievance,
   fetchGrievances,
