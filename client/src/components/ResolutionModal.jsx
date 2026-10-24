@@ -6,10 +6,11 @@ import {
   Loader2, Image as ImageIcon, ExternalLink
 } from 'lucide-react';
 import { formatDateTime } from '../utils/dateUtils';
+import { isFlaggedSuspicious, isUnverified } from '../utils/verification';
 
 const STATUS_FLOW = ['Received', 'Assigned', 'Under Investigation', 'Resolved', 'Closed'];
 const STATUS_CFG  = {
-  Received:              { bg: 'bg-slate-100',      text: 'text-slate-700',   dot: 'bg-slate-400',    border: 'border-slate-200' },
+  Received:              { bg: 'bg-blue-50',        text: 'text-blue-700',    dot: 'bg-blue-500',     border: 'border-blue-200' },
   Assigned:              { bg: 'bg-blue-50',         text: 'text-blue-700',    dot: 'bg-blue-400',     border: 'border-blue-200'  },
   'Under Investigation': { bg: 'bg-amber-50',        text: 'text-amber-700',   dot: 'bg-amber-400',    border: 'border-amber-200' },
   Resolved:              { bg: 'bg-emerald-50',      text: 'text-emerald-700', dot: 'bg-emerald-400',  border: 'border-emerald-200'},
@@ -18,15 +19,22 @@ const STATUS_CFG  = {
 
 function RiskBar({ label, value, maxValue = 100 }) {
   const pct = Math.min(100, Math.round((value / maxValue) * 100));
-  const barColor = pct > 70 ? '#e11d48' : pct > 40 ? '#d97706' : '#059669';
-  const textClass = pct > 70 ? 'text-rose-600' : pct > 40 ? 'text-amber-600' : 'text-emerald-600';
+  const barColor = pct >= 70 ? '#f97316' : pct > 40 ? '#d97706' : '#059669';
+  const textClass = pct >= 70 ? 'text-orange-700' : pct > 40 ? 'text-amber-700' : 'text-emerald-700';
   return (
     <div>
       <div className="flex justify-between mb-1">
-        <span className="text-xs text-slate-500">{label}</span>
-        <span className={`text-xs font-mono font-bold ${textClass}`}>{value}{maxValue === 100 ? '%' : '/10'}</span>
+        <span className="text-xs text-slate-600">{label}</span>
+        <span className={`text-sm font-mono font-bold ${textClass}`}>{value}{maxValue === 100 ? '%' : '/10'}</span>
       </div>
-      <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+      <div
+        className="h-2 bg-amber-100 rounded-full overflow-hidden"
+        role="meter"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={maxValue}
+        aria-valuenow={value}
+      >
         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: barColor }} />
       </div>
     </div>
@@ -77,79 +85,90 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
     }
   }, [grievance, onReanalyze]);
 
-  const isSuspicious = grievance.authenticity_flag !== 'Likely Genuine Grievance';
+  const isSuspicious = isFlaggedSuspicious(grievance.authenticity_flag);
+  const isUnverifiedReport = isUnverified(grievance.authenticity_flag);
   const currentIdx   = STATUS_FLOW.indexOf(status);
   const cfg          = STATUS_CFG[status] || STATUS_CFG.Received;
+  const summary = analysisResult?.summary || grievance.ai_summary;
+  const sourceLabel = grievance.category || grievance.platform || 'Public Grievance';
+  const title = `${grievance.category || 'Public Grievance'} — ${grievance.location_tagged || 'Location unverified'}`;
+  const locationText = grievance.coordinates
+    ? `${grievance.location_tagged}${grievance.coordinates_approximate ? ' (approx.)' : ''} (${grievance.coordinates.lat.toFixed(3)}, ${grievance.coordinates.lng.toFixed(3)})`
+    : grievance.location_tagged;
 
   const modal = (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
+      className="modal-overlay-container fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto p-3 sm:p-6"
       style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-3xl my-8 shadow-2xl shadow-slate-900/20">
-
-        {/* ── Header ── */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-200">
-          <div className="w-1.5 h-8 rounded-full bg-blue-500 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="text-xs text-slate-400 font-mono">{grievance.id}</div>
-            <div className="font-semibold text-slate-800 text-sm">{grievance.category} — {grievance.location_tagged}</div>
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl shadow-slate-900/20">
+        <div className="flex items-center justify-between gap-4 px-5 sm:px-6 py-4 border-b border-slate-200 bg-slate-50/70">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className="text-xs text-slate-600 font-mono">{grievance.id}</span>
+              <span className="px-2 py-0.5 bg-violet-50 text-violet-700 text-xs font-semibold rounded-full border border-violet-200">
+                {sourceLabel}
+              </span>
+            </div>
+            <h2 className="text-lg sm:text-xl font-semibold text-slate-900 truncate">{title}</h2>
           </div>
-          <span className={`badge border flex-shrink-0 ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-            {status}
-          </span>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors ml-1"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <span className={`px-3 py-1 rounded-full border text-xs font-semibold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+              {status}
+            </span>
+            <button
+              onClick={onClose}
+              aria-label="Close grievance details"
+              className="p-2 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
-        {/* ── Toast ── */}
         {statusMsg && (
-          <div className={`mx-5 mt-4 px-4 py-2 rounded-lg text-sm font-medium border ${
+          <div className={`mx-5 sm:mx-6 mt-4 px-4 py-2 rounded-lg text-sm font-medium border ${
             statusMsg.type === 'success'
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
               : 'bg-rose-50 text-rose-700 border-rose-200'
           }`}>{statusMsg.text}</div>
         )}
 
-        <div className="p-5 grid grid-cols-1 lg:grid-cols-5 gap-5">
+        <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-3 gap-5 overflow-y-auto">
+          <div className="md:col-span-2 flex flex-col gap-5 min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-600">
+              <span className="inline-flex items-center gap-1.5 font-semibold text-slate-900">
+                <User size={14} className="text-slate-600" /> {grievance.author_handle || 'Unknown reporter'}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar size={14} className="text-slate-600" /> {formatDateTime(grievance.timestamp)}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <MapPin size={14} className="text-slate-600" /> {locationText}
+              </span>
+            </div>
 
-          {/* ── Left: post content ── */}
-          <div className="lg:col-span-3 flex flex-col gap-4">
-
-            {/* Meta row */}
-            <div className="flex flex-wrap gap-3">
-              {[
-                { icon: User,     text: grievance.author_handle },
-                { icon: Calendar, text: formatDateTime(grievance.timestamp) },
-                { icon: MapPin,   text: grievance.coordinates
-                  ? `${grievance.location_tagged} (${grievance.coordinates.lat.toFixed(3)}, ${grievance.coordinates.lng.toFixed(3)})`
-                  : grievance.location_tagged },
-              ].map(({ icon: Icon, text }) => (
-                <div key={text} className="flex items-center gap-1.5 text-sm text-slate-500">
-                  <Icon size={13} className="text-slate-400 flex-shrink-0" />
-                  <span className="font-mono text-xs">{text}</span>
+            <div className="p-4 sm:p-5 bg-slate-50 rounded-xl border border-slate-200">
+              <p className="text-slate-800 text-sm sm:text-base leading-relaxed whitespace-pre-wrap">{grievance.post_text}</p>
+              {(grievance.hashtags || []).length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {grievance.hashtags.map(h => (
+                    <span key={h} className="px-2.5 py-1 bg-blue-50 text-blue-800 text-xs rounded-full border border-blue-200 font-mono">
+                      {h}
+                    </span>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
 
-            {/* Post text */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-              <p className="text-sm text-slate-700 leading-relaxed">{grievance.post_text}</p>
-            </div>
-
-            {/* Image & Video Evidence */}
             {grievance.image_url && (
               <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-900 group">
                 <img
                   src={grievance.image_url}
-                  alt="Evidence"
-                  className="w-full h-48 object-cover"
-                  onError={e => { e.target.style.display = 'none'; }}
+                  alt="Submitted report evidence"
+                  className="w-full max-h-64 object-cover"
+                  onError={e => { e.currentTarget.style.display = 'none'; }}
                 />
                 {grievance.source_url && (
                   <a
@@ -164,113 +183,94 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
                 )}
                 {grievance.image_ocr_text && (
                   <div className="px-3 py-2 bg-amber-50 border-t border-amber-200 flex gap-2 items-start">
-                    <ImageIcon size={11} className="text-amber-600 flex-shrink-0 mt-0.5" />
-                    <span className="text-xs text-amber-800 font-mono italic">{grievance.image_ocr_text}</span>
+                    <ImageIcon size={13} className="text-amber-700 flex-shrink-0 mt-0.5" />
+                    <span className="text-xs text-amber-900 font-mono italic">{grievance.image_ocr_text}</span>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Hashtags */}
-            <div className="flex flex-wrap gap-1.5">
-              {(grievance.hashtags || []).map(h => (
-                <span key={h} className="text-xs text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full font-mono">
-                  {h}
-                </span>
-              ))}
-            </div>
+            <section className="p-4 bg-violet-50/70 border border-violet-200 rounded-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <Brain size={14} className="text-violet-800" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-violet-900">
+                  {grievance.analysis_mode?.startsWith('groq:') ? 'Groq Text Triage' : grievance.analysis_mode?.startsWith('gemini') ? 'Gemini Fallback Summary' : 'Analysis Summary'}
+                </h3>
+              </div>
+              <p className="text-sm text-violet-950 leading-relaxed">
+                {summary ? <>&ldquo;{summary}&rdquo;</> : 'No analysis summary is available for this report.'}
+              </p>
+            </section>
 
-            {/* Cluster siblings */}
             {clusterSiblings?.length > 0 && (
               <div className="bg-violet-50 border border-violet-200 rounded-xl p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <Copy size={12} className="text-violet-600" />
-                  <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">
+                  <Copy size={13} className="text-violet-700" />
+                  <span className="text-xs font-semibold text-violet-800 uppercase tracking-wide">
                     {clusterSiblings.length + 1} Reports — Master Ticket: {grievance.duplicate_cluster_id}
                   </span>
                 </div>
                 {clusterSiblings.map(s => (
-                  <div key={s.id} className="flex items-center gap-2 text-xs text-violet-600 py-0.5">
-                    <ChevronRight size={10} />
-                    <span className="font-mono text-violet-500">{s.id}</span>
+                  <div key={s.id} className="flex items-center gap-2 text-xs text-violet-800 py-1">
+                    <ChevronRight size={12} />
+                    <span className="font-mono">{s.id}</span>
                     <span>{s.author_handle}</span>
-                    <span className="ml-auto text-violet-400">{s.platform.split(' ')[0]}</span>
+                    <span className="ml-auto text-slate-600">{s.platform.split(' ')[0]}</span>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Resolution note (if resolved) */}
             {grievance.resolution_note && (
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                <div className="text-xs text-emerald-700 font-semibold uppercase tracking-wide mb-1">
-                  ✓ Resolution Note
-                </div>
-                <p className="text-xs text-emerald-800 leading-relaxed">{grievance.resolution_note}</p>
+                <div className="text-xs text-emerald-800 font-semibold uppercase tracking-wide mb-1">Resolution Note</div>
+                <p className="text-sm text-emerald-900 leading-relaxed">{grievance.resolution_note}</p>
                 {grievance.resolution_date && (
-                  <p className="text-xs text-emerald-500 font-mono mt-1">{formatDateTime(grievance.resolution_date)}</p>
+                  <p className="text-xs text-slate-600 font-mono mt-2">{formatDateTime(grievance.resolution_date)}</p>
                 )}
               </div>
             )}
           </div>
 
-          {/* ── Right: AI scores + actions ── */}
-          <div className="lg:col-span-2 flex flex-col gap-4">
-
-            {/* Department */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Building2 size={12} className="text-blue-500" />
-                <span className="text-xs text-slate-500 uppercase tracking-wide font-semibold">Department</span>
+          <aside className="md:border-l md:border-slate-200 md:pl-5 flex flex-col gap-4 min-w-0">
+            <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Building2 size={14} className="text-blue-700" />
+                <span className="text-xs text-slate-600 uppercase tracking-wide font-bold">Department</span>
               </div>
-              <div className="text-sm font-medium text-slate-800">{grievance.department}</div>
-              <div className="text-xs text-slate-500 mt-0.5">{grievance.category}</div>
+              <div className="text-sm font-semibold text-slate-900">{grievance.department || 'Unassigned'}</div>
+              <span className="inline-flex mt-2 px-2 py-0.5 rounded-full bg-white border border-slate-200 text-xs text-slate-700">
+                {grievance.category || 'Public Grievance'}
+              </span>
             </div>
 
-            {/* AI scores */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col gap-3">
-              <div className="flex items-center gap-1.5">
-                <Brain size={12} className="text-violet-600" />
-                <span className="text-xs text-slate-500 uppercase tracking-wide font-semibold">AI Intelligence</span>
-              </div>
-
+            <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 flex flex-col gap-3">
               <RiskBar label="Severity" value={grievance.severity_score} maxValue={10} />
-              <RiskBar label="Authenticity Risk" value={grievance.authenticity_risk_score} maxValue={100} />
-
-              <div className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 border font-medium ${
+              <div className="text-xs text-slate-700">Automated text analysis does not establish authenticity; human review is required.</div>
+              <div className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 border font-semibold ${
                 isSuspicious
-                  ? 'bg-rose-50 border-rose-200 text-rose-700'
-                  : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                  ? 'bg-rose-50 border-rose-200 text-rose-800'
+                  : isUnverifiedReport
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-800'
               }`}>
-                {isSuspicious ? <AlertTriangle size={11} /> : <CheckCircle2 size={11} />}
-                {grievance.authenticity_flag}
+                {isSuspicious || isUnverifiedReport ? <AlertTriangle size={13} /> : <CheckCircle2 size={13} />}
+                {isSuspicious ? 'Flagged after review' : isUnverifiedReport ? 'Unverified' : grievance.authenticity_flag}
               </div>
-
-              {(analysisResult?.summary || grievance.ai_summary) && (
-                <div className="bg-violet-50 border border-violet-200 rounded-lg p-2.5">
-                  <div className="text-xs text-violet-700 font-semibold mb-1">
-                    {grievance.analysis_mode === 'gemini' ? 'Gemini Summary' : 'Analysis Summary'}
-                  </div>
-                  <p className="text-xs text-violet-800 italic leading-relaxed">
-                    &ldquo;{analysisResult?.summary || grievance.ai_summary}&rdquo;
-                  </p>
-                </div>
-              )}
-
-              <button
-                onClick={handleReanalyze}
-                disabled={analyzeLoading}
-                className="btn-primary w-full justify-center text-xs py-1.5 gap-1.5"
-              >
-                {analyzeLoading ? <Loader2 size={12} className="animate-spin" /> : <Brain size={12} />}
-                {analyzeLoading ? 'Analysing…' : `Re-analyze with ${grievance.analysis_mode === 'gemini' ? 'Gemini' : 'local'} analysis`}
-              </button>
             </div>
 
-            {/* Status lifecycle stepper */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-              <div className="text-xs text-slate-500 uppercase tracking-wide font-semibold mb-3">Resolution Lifecycle</div>
-              <div className="flex flex-col gap-1">
+            <button
+              onClick={handleReanalyze}
+              disabled={analyzeLoading}
+              className="btn-secondary w-full justify-center text-sm py-2.5 gap-2 border-blue-200 text-blue-800 hover:bg-blue-50 disabled:opacity-50"
+            >
+              {analyzeLoading ? <Loader2 size={14} className="animate-spin" /> : <Brain size={14} />}
+              {analyzeLoading ? 'Analysing…' : 'Re-run text analysis'}
+            </button>
+
+            <div className="pt-1">
+              <div className="text-xs text-slate-600 uppercase tracking-wide font-bold mb-3">Resolution Lifecycle</div>
+              <div className="relative flex flex-col">
                 {STATUS_FLOW.map((s, idx) => {
                   const isPast    = idx < currentIdx;
                   const isCurrent = idx === currentIdx;
@@ -280,32 +280,29 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
                       key={s}
                       onClick={() => !isCurrent && handleStatusChange(s)}
                       disabled={statusLoading || isCurrent}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all border text-left ${
-                        isCurrent
-                          ? `cursor-default ${sc.bg} ${sc.text} ${sc.border}`
-                          : isPast
-                            ? 'opacity-40 line-through cursor-pointer hover:opacity-60 border-slate-200 text-slate-500'
-                            : 'cursor-pointer hover:bg-slate-100 border-slate-200 text-slate-600'
-                      }`}
+                      className={`relative flex items-center gap-3 min-h-9 px-2 text-xs text-left transition-colors ${
+                        isCurrent ? `${sc.text} font-semibold` : isPast ? 'text-slate-500' : 'text-slate-600 hover:text-slate-900'
+                      } ${statusLoading ? 'cursor-wait' : ''}`}
                     >
-                      <span
-                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          isCurrent ? sc.dot : isPast ? 'bg-emerald-400' : 'bg-slate-300'
-                        }`}
-                      />
-                      {s}
-                      {isCurrent && <span className="ml-auto text-xs opacity-40">current</span>}
+                      <span className={`relative z-10 w-3 h-3 rounded-full border-2 flex-shrink-0 ${
+                        isCurrent ? `${sc.dot} border-white ring-2 ring-blue-200` : isPast ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-slate-300'
+                      }`} />
+                      {idx < STATUS_FLOW.length - 1 && (
+                        <span className={`absolute left-[13px] top-6 h-3 w-px ${isPast ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+                      )}
+                      <span>{s}</span>
+                      {isCurrent && <span className="ml-auto rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-semibold">Current</span>}
                     </button>
                   );
                 })}
               </div>
               {statusLoading && (
-                <div className="flex items-center gap-2 mt-2 text-xs text-blue-600">
-                  <Loader2 size={11} className="animate-spin" /> Updating…
+                <div className="flex items-center gap-2 mt-2 text-xs text-blue-700">
+                  <Loader2 size={12} className="animate-spin" /> Updating…
                 </div>
               )}
             </div>
-          </div>
+          </aside>
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { formatDistanceToNow } from '../utils/dateUtils';
-import { AlertTriangle, CheckCircle2, Copy, ExternalLink } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, ExternalLink, HelpCircle } from 'lucide-react';
+import { isFlaggedSuspicious, isVerifiedGenuine } from '../utils/verification';
 
 const PLATFORM_COLORS = {
   'X (Twitter)': 'bg-gray-900 text-gray-200 border-gray-700',
@@ -29,12 +30,13 @@ function SeverityBadge({ score }) {
   );
 }
 
-function AuthBadge({ flag, score }) {
-  const isSuspicious = flag !== 'Likely Genuine Grievance';
+function AuthBadge({ flag }) {
+  const isSuspicious = isFlaggedSuspicious(flag);
+  const isGenuine = isVerifiedGenuine(flag);
   return (
-    <span className={`badge border ${isSuspicious ? 'bg-purple-900 border-purple-700 text-purple-300' : 'bg-green-900 border-green-700 text-green-400'}`}>
-      {isSuspicious ? <AlertTriangle size={10} /> : <CheckCircle2 size={10} />}
-      {isSuspicious ? `Risk ${score}%` : `Auth ${100 - score}%`}
+    <span className={`badge border ${isSuspicious ? 'bg-purple-900 border-purple-700 text-purple-300' : isGenuine ? 'bg-green-900 border-green-700 text-green-400' : 'bg-amber-900 border-amber-700 text-amber-300'}`}>
+      {isSuspicious ? <AlertTriangle size={10} /> : isGenuine ? <CheckCircle2 size={10} /> : <HelpCircle size={10} />}
+      {isSuspicious ? 'Flagged after review' : isGenuine ? 'Verified by human' : 'Unverified'}
     </span>
   );
 }
@@ -117,7 +119,7 @@ export default function GrievanceCard({ grievance, isSelected, onClick, clusterC
       {/* Meta row */}
       <div className="flex flex-wrap gap-2 items-center mb-2">
         <SeverityBadge score={severity_score} />
-        <AuthBadge flag={authenticity_flag} score={authenticity_risk_score} />
+        <AuthBadge flag={authenticity_flag} />
         <span className={`badge text-xs ${statusColor}`}>{status}</span>
       </div>
 

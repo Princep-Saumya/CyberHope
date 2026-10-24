@@ -61,7 +61,7 @@ export default function Navbar({ active, onNavigate, stats, globalSearch, onGlob
           {/* Gemini badge */}
           <div className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
             <Sparkles size={11} />
-            Gemini 1.5 Flash
+            Gemini AI
           </div>
 
           {/* Officer badge */}
