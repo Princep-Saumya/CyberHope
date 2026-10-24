@@ -1,10 +1,26 @@
 const Parser = require('rss-parser');
+const { consumeDailyQuota, getDailyUsage } = require('./quotaService');
+const { getGeminiHealth } = require('./geminiService');
+const { getGroqStatus } = require('./groqService');
+const { getSearchTaxonomy } = require('./osintTaxonomy');
 
 const rssParser = new Parser();
 const MAX_QUERY_LENGTH = 160;
 const MAX_RESULTS = 20;
 const REQUEST_TIMEOUT_MS = 10000;
+const GOOGLE_NEWS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const GOOGLE_NEWS_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+const YOUTUBE_MIN_INTERVAL_MS = 60 * 1000;
+const YOUTUBE_DAILY_SEARCH_LIMIT = 40;
 let redditToken = null;
+let youtubeNextRequestAt = 0;
+let youtubeQueue = Promise.resolve();
+let youtubeRequestsPending = 0;
+const youtubeSearchCache = new Map();
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 function normalizeQuery(query) {
   if (typeof query !== 'string' || !query.trim()) {
@@ -21,6 +37,8 @@ function normalizeQuery(query) {
 }
 
 function getSourceStatus() {
+  const youtubeSearchCount = getDailyUsage('youtube');
+  const geminiRequestCount = getDailyUsage('gemini');
   const redditConfigured = Boolean(
     process.env.REDDIT_CLIENT_ID &&
     process.env.REDDIT_CLIENT_SECRET &&
@@ -28,6 +46,8 @@ function getSourceStatus() {
   );
   const youtubeConfigured = Boolean(process.env.YOUTUBE_API_KEY);
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY);
+  const geminiHealth = getGeminiHealth();
+  const groqStatus = getGroqStatus();
 
   return {
     'google-news': {
@@ -45,27 +65,46 @@ function getSourceStatus() {
     },
     youtube: {
       configured: youtubeConfigured,
-      label: 'YouTube Data API v3 (Videos & Citizen Comments)',
+      label: 'YouTube Data API v3 (Public Videos)',
       free: true,
       status: youtubeConfigured ? 'Active' : 'Pending API Key',
       reason: youtubeConfigured ? null : 'YOUTUBE_API_KEY not configured in server/.env',
+      daily_search_limit: YOUTUBE_DAILY_SEARCH_LIMIT,
+      searches_today: youtubeSearchCount,
+      searches_remaining: Math.max(0, YOUTUBE_DAILY_SEARCH_LIMIT - youtubeSearchCount),
+      minimum_interval_seconds: YOUTUBE_MIN_INTERVAL_MS / 1000,
+    },
+    groq: {
+      ...groqStatus,
+      label: `Groq ${groqStatus.model} (Text Triage)`,
     },
     gemini: {
       configured: geminiConfigured,
-      label: 'Google Gemini AI (Multimodal & Sentiment)',
+      label: `Google Gemini ${process.env.GEMINI_MODEL || 'gemini-3.8-flash'} (Image Analysis / Text Fallback)`,
       free: true,
-      status: geminiConfigured ? `Active (${process.env.GEMINI_MODEL || 'Gemini AI'})` : 'Running on Heuristic Fallback',
-      reason: geminiConfigured ? null : 'GEMINI_API_KEY not configured in server/.env',
+      status: geminiConfigured
+        ? geminiHealth.status === 'ready' ? `Configured (${process.env.GEMINI_MODEL || 'gemini-3.8-flash'})` : geminiHealth.status
+        : 'Running on Heuristic Fallback',
+      reason: geminiConfigured ? geminiHealth.reason : 'GEMINI_API_KEY not configured in server/.env',
+      last_failure_at: geminiHealth.last_failure_at,
+      daily_request_limit: 100,
+      requests_today: geminiRequestCount,
+      requests_remaining: Math.max(0, 100 - geminiRequestCount),
+      minimum_interval_seconds: 6,
     },
   };
+}
+
+function getOsintTaxonomy() {
+  return getSearchTaxonomy();
 }
 
 // ─── Google News RSS Ingestion (100% Free, Zero Key) ─────────────────────────
 
 async function searchGoogleNews(query) {
-  const terms = normalizeQuery(query);
+  const terms = normalizeQuery(query).replace(/\bwhen:\d+[hdm]\b/gi, '').trim();
   const url = new URL('https://news.google.com/rss/search');
-  url.searchParams.set('q', `${terms} Bihar`);
+  url.searchParams.set('q', `${terms} Bihar when:1d`);
   url.searchParams.set('hl', 'en-IN');
   url.searchParams.set('gl', 'IN');
   url.searchParams.set('ceid', 'IN:en');
@@ -77,15 +116,28 @@ async function searchGoogleNews(query) {
 
   const xml = await response.text();
   const feed = await rssParser.parseString(xml);
-  const items = (feed.items || []).slice(0, MAX_RESULTS).map(item => ({
-    id: item.guid || item.link,
-    source: 'Google News',
-    title: item.title || 'Untitled article',
-    text: item.contentSnippet || item.content || item.title || '',
-    author: item.creator || 'News publisher',
-    published_at: item.isoDate || item.pubDate || null,
-    url: item.link || null,
-  }));
+  const now = Date.now();
+  const items = (feed.items || [])
+    .map(item => {
+      const publishedAt = item.isoDate || item.pubDate || null;
+      const publishedAtMs = publishedAt ? Date.parse(publishedAt) : NaN;
+      return {
+        id: item.guid || item.link,
+        source: 'Google News',
+        title: item.title || 'Untitled article',
+        text: item.contentSnippet || item.content || item.title || '',
+        author: item.creator || 'News publisher',
+        published_at: publishedAt,
+        url: item.link || null,
+        publishedAtMs,
+      };
+    })
+    .filter(item => Number.isFinite(item.publishedAtMs)
+      && item.publishedAtMs >= now - GOOGLE_NEWS_MAX_AGE_MS
+      && item.publishedAtMs <= now + GOOGLE_NEWS_FUTURE_TOLERANCE_MS)
+    .sort((a, b) => b.publishedAtMs - a.publishedAtMs)
+    .slice(0, MAX_RESULTS)
+    .map(({ publishedAtMs: _publishedAtMs, ...item }) => item);
 
   return { source: 'google-news', count: items.length, items };
 }
@@ -188,6 +240,32 @@ async function searchYouTube(query) {
   }
 
   const terms = normalizeQuery(query);
+  if (youtubeRequestsPending >= 2) {
+    const error = new Error('YouTube search is busy. Wait for the current search to finish.');
+    error.status = 429;
+    throw error;
+  }
+  youtubeRequestsPending++;
+  const pending = youtubeQueue.then(() => performYouTubeSearch(terms, apiKey));
+  youtubeQueue = pending.then(
+    () => { youtubeRequestsPending--; },
+    () => { youtubeRequestsPending--; },
+  );
+  return pending;
+}
+
+async function performYouTubeSearch(terms, apiKey) {
+  const cacheKey = terms.toLowerCase();
+  const cached = youtubeSearchCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.result;
+  }
+
+  const waitMs = youtubeNextRequestAt - Date.now();
+  if (waitMs > 0) await wait(waitMs);
+  youtubeNextRequestAt = Date.now() + YOUTUBE_MIN_INTERVAL_MS;
+  consumeDailyQuota('youtube', YOUTUBE_DAILY_SEARCH_LIMIT);
+
   const url = new URL('https://www.googleapis.com/youtube/v3/search');
   url.searchParams.set('part', 'snippet');
   url.searchParams.set('q', `${terms} Bihar`);
@@ -214,7 +292,12 @@ async function searchYouTube(query) {
     thumbnail_url: item.snippet?.thumbnails?.medium?.url || null,
   }));
 
-  return { source: 'youtube', count: items.length, items };
+  const searchResult = { source: 'youtube', count: items.length, items };
+  youtubeSearchCache.set(cacheKey, {
+    result: searchResult,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  });
+  return searchResult;
 }
 
 // ─── Unified Public Search Router ─────────────────────────────────────────────
@@ -230,6 +313,7 @@ async function searchPublicSource(source, query) {
 
 module.exports = {
   getSourceStatus,
+  getOsintTaxonomy,
   searchPublicSource,
   searchGoogleNews,
   searchReddit,

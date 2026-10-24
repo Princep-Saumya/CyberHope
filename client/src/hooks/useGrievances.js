@@ -4,6 +4,16 @@ import { api } from '../services/api';
 
 const DEBOUNCE_MS = 400;
 
+function sortByNewestTimestamp(records) {
+  return [...records].sort((a, b) => {
+    const aTimestamp = Date.parse(a.timestamp);
+    const bTimestamp = Date.parse(b.timestamp);
+    if (!Number.isFinite(aTimestamp)) return Number.isFinite(bTimestamp) ? 1 : 0;
+    if (!Number.isFinite(bTimestamp)) return -1;
+    return bTimestamp - aTimestamp;
+  });
+}
+
 const DEFAULT_FILTERS = {
   hashtag: '',
   location: '',
@@ -44,7 +54,7 @@ export function useGrievances() {
     setError(null);
     try {
       const result = await api.getGrievances(activeFilters);
-      setGrievances(result.data || []);
+      setGrievances(sortByNewestTimestamp(result.data || []));
     } catch (e) {
       setError(e.message);
       setGrievances([]);
@@ -91,7 +101,7 @@ export function useGrievances() {
       // Prepend to grievances list if not duplicate
       setGrievances((prev) => {
         if (prev.some((g) => g.id === record.id)) return prev;
-        return [record, ...prev];
+        return sortByNewestTimestamp([...prev, record]);
       });
 
       if (newStats) setStats(newStats);
@@ -191,8 +201,8 @@ export function useGrievances() {
   );
 
   const reanalyzeGrievance = useCallback(
-    async (grievance) => {
-      const result = await api.analyzePost(grievance.post_text, grievance.image_ocr_text, grievance.id);
+    async (grievance, { image = null, imageOcrText = grievance.image_ocr_text } = {}) => {
+      const result = await api.analyzePost(grievance.post_text, imageOcrText, grievance.id, image);
       if (result.analysis) {
         const updated = {
           ...grievance,
@@ -200,12 +210,18 @@ export function useGrievances() {
           category: result.analysis.category,
           severity_score: result.analysis.severity_score,
           priority_score: result.analysis.priority_score,
+          location_tagged: result.analysis.extracted_location || grievance.location_tagged,
+          coordinates: result.analysis.coordinates ?? grievance.coordinates,
+          coordinates_approximate: result.analysis.coordinates_approximate ?? grievance.coordinates_approximate,
           authenticity_risk_score: result.analysis.authenticity_risk_score,
           authenticity_flag: result.analysis.authenticity_flag,
           sentiment_score: result.analysis.sentiment_score,
           sentiment_label: result.analysis.sentiment_label,
           ai_summary: result.analysis.summary,
           analysis_mode: result.analysis.analysis_mode,
+          media_analysis_status: result.analysis.media_analysis_status ?? grievance.media_analysis_status,
+          media_observation: result.analysis.media_observation ?? grievance.media_observation,
+          media_analysis_mode: result.analysis.media_analysis_mode ?? grievance.media_analysis_mode,
         };
         setGrievances((prev) => prev.map((g) => (g.id === grievance.id ? updated : g)));
         setSelectedGrievance((prev) => (prev?.id === grievance.id ? updated : prev));
