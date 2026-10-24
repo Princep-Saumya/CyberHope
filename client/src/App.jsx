@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import ResolutionModal from './components/ResolutionModal';
@@ -8,12 +8,17 @@ import ClusteringEngine from './pages/ClusteringEngine';
 import AIVerification from './pages/AIVerification';
 import ResolutionPortal from './pages/ResolutionPortal';
 import { useGrievances } from './hooks/useGrievances';
-import { Bell, X, ExternalLink, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { X, ExternalLink, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const [activePage, setActivePage]     = useState('dashboard');
   const [globalSearch, setGlobalSearch] = useState('');
   const [pollingRealtime, setPollingRealtime] = useState(false);
+  const [pollCooldown, setPollCooldown] = useState(false);
+  const [simulationCooldown, setSimulationCooldown] = useState(false);
+  const pollLock = useRef(false);
+  const simulationLock = useRef(false);
+  const cooldownTimers = useRef({ poll: null, simulation: null, highlight: null });
 
   const {
     filters, updateFilter, resetFilters,
@@ -29,6 +34,19 @@ export default function App() {
   } = useGrievances();
   const [simulatingPost, setSimulatingPost] = useState(false);
   const [actionNotice, setActionNotice] = useState(null);
+  const [highlightedReportId, setHighlightedReportId] = useState(null);
+
+  useEffect(() => () => {
+    clearTimeout(cooldownTimers.current.poll);
+    clearTimeout(cooldownTimers.current.simulation);
+    clearTimeout(cooldownTimers.current.highlight);
+  }, []);
+
+  useEffect(() => {
+    if (!actionNotice) return undefined;
+    const timer = setTimeout(() => setActionNotice(null), 7000);
+    return () => clearTimeout(timer);
+  }, [actionNotice]);
 
   // Auto-dismiss real-time toast after 10s
   useEffect(() => {
@@ -41,7 +59,11 @@ export default function App() {
   }, [realtimeNotification, clearNotification]);
 
   const handlePollRealtime = useCallback(async () => {
+    if (pollLock.current) return;
+    pollLock.current = true;
     setPollingRealtime(true);
+    setPollCooldown(true);
+    cooldownTimers.current.poll = setTimeout(() => setPollCooldown(false), 6000);
     try {
       await triggerRealtimePoll();
       setActionNotice({
@@ -52,11 +74,16 @@ export default function App() {
       setActionNotice({ type: 'error', text: `Feed scan failed: ${e.message}` });
     } finally {
       setPollingRealtime(false);
+      pollLock.current = false;
     }
   }, [triggerRealtimePoll]);
 
   const handleSimulatePost = useCallback(async () => {
+    if (simulationLock.current) return;
+    simulationLock.current = true;
     setSimulatingPost(true);
+    setSimulationCooldown(true);
+    cooldownTimers.current.simulation = setTimeout(() => setSimulationCooldown(false), 5000);
     setActionNotice(null);
     try {
       const result = await addSampleReport({
@@ -67,17 +94,23 @@ export default function App() {
         coordinates: { lat: 25.5941, lng: 85.1456 },
         hashtags: ['#BSPHCL', '#Kankarbagh', '#Patna'],
       });
+      setHighlightedReportId(result.record.id);
+      clearTimeout(cooldownTimers.current.highlight);
+      cooldownTimers.current.highlight = setTimeout(() => setHighlightedReportId(null), 5000);
       setGlobalSearch('');
       setActivePage('dashboard');
       setActionNotice({
         type: 'success',
-        text: `Sample report added · ${result.record.department} · ${result.record.duplicate_cluster_id ? 'matched an existing cluster' : 'new report'}`,
+        title: 'New simulated grievance added',
+        text: result.record.post_text,
+        ticket: result.record,
         mode: result.analysis.analysis_mode,
       });
     } catch (e) {
       setActionNotice({ type: 'error', text: `Could not add sample report: ${e.message}` });
     } finally {
       setSimulatingPost(false);
+      simulationLock.current = false;
     }
   }, [addSampleReport]);
 
@@ -111,10 +144,16 @@ export default function App() {
     }
   }, [grievances, setSelectedGrievance, clearNotification]);
 
+  const handleViewActionTicket = useCallback(() => {
+    if (!actionNotice?.ticket) return;
+    setSelectedGrievance(actionNotice.ticket);
+    setActionNotice(null);
+  }, [actionNotice, setSelectedGrievance]);
+
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard':
-        return <ExecutiveDashboard grievances={grievances} stats={stats} clusters={clusters} onSelectGrievance={setSelectedGrievance} />;
+        return <ExecutiveDashboard grievances={grievances} stats={stats} clusters={clusters} onSelectGrievance={setSelectedGrievance} highlightedReportId={highlightedReportId} />;
       case 'osint':
         return <OSINTSearch filters={filters} onFilterChange={updateFilter} onReset={resetFilters} grievances={grievances} loading={loading} onSelectGrievance={setSelectedGrievance} onImportSourceItem={handleImportSourceItem} />;
       case 'clusters':
@@ -145,21 +184,12 @@ export default function App() {
           onGlobalSearch={handleGlobalSearch}
           onSimulatePost={handleSimulatePost}
           simulatingPost={simulatingPost}
+          simulateDisabled={simulatingPost || simulationCooldown}
           isSocketConnected={isSocketConnected}
           onPollRealtime={handlePollRealtime}
           pollingRealtime={pollingRealtime}
+          pollDisabled={pollingRealtime || pollCooldown}
         />
-
-        {actionNotice && (
-          <div role="status" className={`flex-shrink-0 px-6 py-2 flex items-center justify-between gap-3 text-sm border-b ${
-            actionNotice.type === 'error'
-              ? 'bg-rose-50 border-rose-200 text-rose-700'
-              : 'bg-emerald-50 border-emerald-200 text-emerald-700'
-          }`}>
-            <span>{actionNotice.text}{actionNotice.mode ? ` · ${actionNotice.mode === 'gemini' ? 'Gemini analysis' : 'local heuristic analysis'}` : ''}</span>
-            <button type="button" className="font-semibold hover:underline" onClick={() => setActionNotice(null)}>Dismiss</button>
-          </div>
-        )}
 
         {/* ── Error Banner ── */}
         {error && (
@@ -174,6 +204,33 @@ export default function App() {
           {renderPage()}
         </main>
       </div>
+
+      {actionNotice && (
+        <aside
+          role={actionNotice.type === 'error' ? 'alert' : 'status'}
+          aria-live={actionNotice.type === 'error' ? 'assertive' : 'polite'}
+          className={`fixed ${realtimeNotification ? 'bottom-64' : 'bottom-6'} right-6 z-50 flex w-[calc(100vw-3rem)] max-w-md items-start gap-3 rounded-xl border bg-white p-4 shadow-2xl ${
+            actionNotice.type === 'error' ? 'border-rose-200 text-rose-800' : 'border-emerald-200 text-emerald-800'
+          }`}
+        >
+          {actionNotice.type === 'error' ? <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-rose-600" /> : <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-emerald-600" />}
+          <div className="min-w-0 flex-1 text-sm">
+            {actionNotice.title && <p className="font-semibold">{actionNotice.title}</p>}
+            <p className={`${actionNotice.title ? 'mt-1 line-clamp-2' : ''}`}>
+              {actionNotice.title ? `“${actionNotice.text}”` : actionNotice.text}
+              {actionNotice.mode ? ` · ${actionNotice.mode.startsWith('groq:') ? 'Groq text triage' : actionNotice.mode.startsWith('gemini') ? 'Gemini fallback triage' : 'local heuristic analysis'}` : ''}
+            </p>
+            {actionNotice.ticket ? (
+              <button type="button" onClick={handleViewActionTicket} className="mt-2 text-xs font-semibold text-blue-700 hover:text-blue-900 hover:underline">
+                View Ticket
+              </button>
+            ) : <p className="mt-1 text-xs opacity-75">This notice closes automatically.</p>}
+          </div>
+          <button type="button" aria-label="Dismiss notification" className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => setActionNotice(null)}>
+            <X size={14} />
+          </button>
+        </aside>
+      )}
 
       {/* ── Real-Time Streaming Toast Notification ── */}
       {realtimeNotification && (

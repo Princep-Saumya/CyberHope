@@ -15,9 +15,11 @@ export default function Header({
   onGlobalSearch,
   onSimulatePost,
   simulatingPost,
+  simulateDisabled,
   isSocketConnected,
   onPollRealtime,
   pollingRealtime,
+  pollDisabled,
 }) {
   const criticalCount   = stats?.critical ?? 0;
   const clusterCount    = stats?.cluster_count ?? 0;
@@ -68,13 +70,13 @@ export default function Header({
       </div>
 
       {/* Right: Live KPI Pills & Stream Actions */}
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex items-center justify-end gap-2 flex-shrink-0 flex-wrap">
 
         {/* Scan Real-Time Feeds Button */}
         <button
           type="button"
           onClick={onPollRealtime}
-          disabled={pollingRealtime}
+          disabled={pollDisabled}
           className="btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3 border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
           title="Query live Bihar public feeds now"
         >
@@ -86,18 +88,18 @@ export default function Header({
         <button
           type="button"
           onClick={onSimulatePost}
-          disabled={simulatingPost}
+          disabled={simulateDisabled}
           className="btn-primary whitespace-nowrap text-xs py-1.5 px-3 flex items-center gap-1.5 rounded-lg disabled:opacity-60 disabled:cursor-wait"
         >
           {simulatingPost ? <Loader2 size={12} className="animate-spin" /> : <Radio size={12} />}
-          <span className="hidden lg:inline">{simulatingPost ? 'Analyzing…' : 'Simulate Report'}</span>
+          <span className="hidden lg:inline">{simulatingPost ? 'Simulating…' : 'Simulate Report'}</span>
         </button>
 
         {/* Live Counters */}
-        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-full">
+        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-blue-800 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
           <BarChart2 size={12} className="text-blue-500" />
           <span className="text-slate-800 font-bold font-mono">{totalPosts}</span>
-          <span className="text-slate-500">total</span>
+          <span className="text-blue-700">total</span>
         </div>
 
         {realtimeIngested > 0 && (
