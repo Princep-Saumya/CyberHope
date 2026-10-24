@@ -73,12 +73,16 @@ function clusterGrievances(records) {
       const b = result[j];
       if (a.duplicate_cluster_id && b.duplicate_cluster_id) continue;
       if (a.department && b.department && a.department !== b.department) continue;
+      if (a.sector && b.sector && a.sector !== b.sector) continue;
       if (a.category && b.category && a.category !== b.category) continue;
 
       let shouldCluster = false;
 
       // 1. Geo-proximity check
-      if (a.coordinates && b.coordinates) {
+      if (
+        a.coordinates && b.coordinates &&
+        !a.coordinates_approximate && !b.coordinates_approximate
+      ) {
         const dist = haversineDistance(a.coordinates, b.coordinates);
         if (dist <= CLUSTER_RADIUS_METERS) shouldCluster = true;
       }

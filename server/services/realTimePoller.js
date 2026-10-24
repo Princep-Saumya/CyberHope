@@ -3,24 +3,19 @@
  * Continuously discovers and ingests live public grievances, runs AI analysis, and broadcasts via WebSockets.
  */
 
-const { searchGoogleNews, searchReddit, searchYouTube } = require('./publicSources');
+const { searchGoogleNews, searchYouTube } = require('./publicSources');
 const { analyzePost } = require('./geminiService');
 const { addGrievance, calcStats } = require('./storeService');
+const { getPollQuery } = require('./osintTaxonomy');
 
-const QUERY_ROTATION = [
-  'Bihar road pothole accident',
-  'Bihar power outage transformer',
-  'Bihar water contamination hospital',
-  'Bihar cyber crime paper leak',
-  'Bihar flood embankment',
-  'Patna drainage sanitation',
-  'Muzaffarpur civic issue',
-  'Gaya electricity water',
-];
+const GEMINI_POLL_EVERY_N_POLLS = 40;
+const YOUTUBE_POLL_EVERY_N_POLLS = 60;
 
 let currentQueryIndex = 0;
 let timer = null;
 let ioInstance = null;
+let pollInProgress = false;
+let lastManualPollAt = 0;
 let pollingStats = {
   active: false,
   interval_ms: 45000,
@@ -29,28 +24,40 @@ let pollingStats = {
   total_items_found: 0,
   total_ingested_live: 0,
   current_query: '',
-  current_source: 'Google News',
+  current_sector: '',
+  current_source: 'Google News RSS',
 };
 
 async function pollOnce() {
-  if (!ioInstance) return;
+  if (!ioInstance || pollInProgress) return;
+  pollInProgress = true;
 
-  const query = QUERY_ROTATION[currentQueryIndex % QUERY_ROTATION.length];
+  const { sector, query } = getPollQuery(currentQueryIndex);
   currentQueryIndex++;
   pollingStats.current_query = query;
+  pollingStats.current_sector = sector.id;
   pollingStats.last_polled_at = new Date().toISOString();
   pollingStats.total_polls++;
 
   try {
-    let sourceResult = { items: [] };
+    const useYouTube = Boolean(process.env.YOUTUBE_API_KEY)
+      && pollingStats.total_polls % YOUTUBE_POLL_EVERY_N_POLLS === 1;
+    let sourceResult;
 
-    // Alternate between YouTube, Reddit, and Google News
-    if (process.env.YOUTUBE_API_KEY && pollingStats.total_polls % 2 === 1) {
+    if (useYouTube) {
       pollingStats.current_source = 'YouTube Data API v3';
       sourceResult = await searchYouTube(query).catch(err => {
         console.warn(`[RealTimePoller] YouTube search error (${query}):`, err.message);
         return { items: [] };
       });
+
+      if (!sourceResult.items?.length) {
+        pollingStats.current_source = 'Google News RSS';
+        sourceResult = await searchGoogleNews(query).catch(err => {
+          console.warn(`[RealTimePoller] News fallback error (${query}):`, err.message);
+          return { items: [] };
+        });
+      }
     } else {
       pollingStats.current_source = 'Google News RSS';
       sourceResult = await searchGoogleNews(query).catch(err => {
@@ -59,22 +66,20 @@ async function pollOnce() {
       });
     }
 
-    // Fallback if empty
-    if (!sourceResult.items || sourceResult.items.length === 0) {
-      sourceResult = await searchGoogleNews(query).catch(() => ({ items: [] }));
-      pollingStats.current_source = 'Google News RSS';
-    }
-
     const items = sourceResult.items || [];
     pollingStats.total_items_found += items.length;
 
     let newlyIngestedCount = 0;
+    let usedGeminiThisPoll = false;
 
     for (const item of items) {
       if (!item.text && !item.title) continue;
 
       const postText = (item.text || item.title).slice(0, 800);
-      const analysis = await analyzePost(postText);
+      const useGemini = pollingStats.total_polls % GEMINI_POLL_EVERY_N_POLLS === 1
+        && !usedGeminiThisPoll;
+      if (useGemini) usedGeminiThisPoll = true;
+      const analysis = await analyzePost(postText, '', { useGemini });
 
       const id = `LIVE-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
       const record = {
@@ -87,8 +92,11 @@ async function pollOnce() {
         image_ocr_text: '',
         location_tagged: analysis.extracted_location || 'Bihar',
         coordinates: analysis.coordinates,
+        coordinates_approximate: analysis.coordinates_approximate,
         hashtags: [...new Set((postText.match(/#[\p{L}\p{N}_]+/gu) || []))],
         department: analysis.department,
+        sector: analysis.sector,
+        sector_label: analysis.sector_label,
         category: analysis.category,
         severity_score: analysis.severity_score,
         priority_score: analysis.priority_score,
@@ -103,11 +111,6 @@ async function pollOnce() {
         source_id: item.id || null,
         source_url: item.url || null,
         is_realtime_stream: true,
-        public_engagement: {
-          shares: Math.floor(Math.random() * 35) + 3,
-          comments: Math.floor(Math.random() * 18) + 1,
-          likes: Math.floor(Math.random() * 75) + 8,
-        },
         imported_at: new Date().toISOString(),
       };
 
@@ -131,6 +134,8 @@ async function pollOnce() {
     }
   } catch (err) {
     console.error('[RealTimePoller] Poll cycle failed:', err.message);
+  } finally {
+    pollInProgress = false;
   }
 }
 
@@ -165,6 +170,20 @@ function getPollerStatus() {
 }
 
 async function triggerManualPoll() {
+  if (pollInProgress) {
+    const error = new Error('A feed scan is already running. Wait for it to finish.');
+    error.status = 429;
+    throw error;
+  }
+
+  const elapsed = Date.now() - lastManualPollAt;
+  if (elapsed < 6000) {
+    const error = new Error('Please wait six seconds between manual feed scans.');
+    error.status = 429;
+    throw error;
+  }
+
+  lastManualPollAt = Date.now();
   await pollOnce();
   return pollingStats;
 }

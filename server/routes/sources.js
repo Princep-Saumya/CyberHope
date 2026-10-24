@@ -1,10 +1,14 @@
 const express = require('express');
-const { getSourceStatus, searchPublicSource } = require('../services/publicSources');
+const { getOsintTaxonomy, getSourceStatus, searchPublicSource } = require('../services/publicSources');
 
 const router = express.Router();
 
 router.get('/sources/status', (_req, res) => {
   res.json({ sources: getSourceStatus() });
+});
+
+router.get('/sources/taxonomy', (_req, res) => {
+  res.json({ count: getOsintTaxonomy().length, sectors: getOsintTaxonomy() });
 });
 
 router.get('/sources/search', async (req, res) => {
