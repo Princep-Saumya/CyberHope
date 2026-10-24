@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Search, MapPin, Building2, Shield, RotateCcw, Hash, LayoutGrid, List, AlertTriangle, CheckCircle2, Copy, ExternalLink, Newspaper, Loader2, Radio } from 'lucide-react';
 import { formatDistanceToNow } from '../utils/dateUtils';
 import { api } from '../services/api';
+import { isFlaggedSuspicious, isUnverified, isVerifiedGenuine } from '../utils/verification';
 
 const DEPARTMENTS = [
   '', 'Road Construction Department (RCD)',
@@ -13,10 +14,10 @@ const LOCATIONS   = ['', 'Patna', 'Gaya', 'Muzaffarpur', 'Bhagalpur', 'Darbhanga
 const PLATFORMS   = { 'X (Twitter)': '𝕏', Facebook: 'f', Instagram: '◉', 'WhatsApp (Screenshot)': '💬' };
 
 const SEVERITY_CFG = s =>
-  s >= 9 ? { cls: 'severity-critical', dot: '#e11d48', label: `CRITICAL ${s}` } :
-  s >= 7 ? { cls: 'severity-high',     dot: '#d97706', label: `HIGH ${s}` }     :
-  s >= 5 ? { cls: 'severity-medium',   dot: '#2563eb', label: `MED ${s}` }      :
-           { cls: 'severity-low',      dot: '#059669', label: `LOW ${s}` };
+  s >= 9 ? { cls: 'bg-rose-50 text-rose-700 border-rose-200', dot: '#e11d48', label: `CRITICAL ${s}` } :
+  s >= 7 ? { cls: 'bg-rose-50 text-rose-700 border-rose-200', dot: '#e11d48', label: `HIGH ${s}` }     :
+  s >= 5 ? { cls: 'bg-amber-50 text-amber-700 border-amber-200', dot: '#d97706', label: `MED ${s}` }  :
+           { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: '#059669', label: `LOW ${s}` };
 
 const STATUS_CLS = {
   Received:              'text-slate-600 bg-slate-100 border-slate-200',
@@ -29,6 +30,8 @@ const STATUS_CLS = {
 function PublicSourceSearch({ onImportSourceItem }) {
   const [source, setSource] = useState('google-news');
   const [query, setQuery] = useState('');
+  const [taxonomy, setTaxonomy] = useState([]);
+  const [sectorId, setSectorId] = useState('');
   const [statuses, setStatuses] = useState({});
   const [items, setItems] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -39,6 +42,9 @@ function PublicSourceSearch({ onImportSourceItem }) {
     api.getPublicSourceStatus()
       .then(result => setStatuses(result.sources || {}))
       .catch(error => setSearchError(`Could not load source status: ${error.message}`));
+    api.getOsintTaxonomy()
+      .then(result => setTaxonomy(result.sectors || []))
+      .catch(error => setSearchError(`Could not load official OSINT search taxonomy: ${error.message}`));
   }, []);
 
   const handleSearch = async (event) => {
@@ -84,10 +90,14 @@ function PublicSourceSearch({ onImportSourceItem }) {
   };
 
   const selectedStatus = statuses[source];
+  const selectedSector = taxonomy.find(sector => sector.id === sectorId);
+  const sourceAvailable = selectedStatus?.configured &&
+    (source !== 'youtube' || selectedStatus.searches_remaining > 0);
 
   return (
+    <>
     <section className="card p-4">
-      <div className="flex items-start justify-between gap-3 mb-3">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div>
           <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
             <Radio size={15} className="text-blue-600" /> Public Source Search
@@ -96,99 +106,175 @@ function PublicSourceSearch({ onImportSourceItem }) {
             Search live public coverage, news feeds, and citizen videos across Bihar. Analyze any item with Gemini AI to ingest it into official grievance tracking.
           </p>
         </div>
-        {selectedStatus && (
-          <span className={`badge border whitespace-nowrap ${
-            selectedStatus.configured
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-              : 'bg-amber-50 text-amber-700 border-amber-200'
-          }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${selectedStatus.configured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-            {selectedStatus.configured ? 'Connected' : 'Setup required'}
-          </span>
-        )}
+        <details className="relative self-start md:self-auto md:min-w-52 rounded-lg border border-slate-200 bg-slate-50">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-semibold text-slate-700">
+            <span className="flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${selectedStatus?.configured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              {selectedStatus?.configured ? 'Source connected' : 'Source status'}
+            </span>
+            {source === 'youtube' && selectedStatus?.configured && (
+              <span className="font-mono text-slate-600">{selectedStatus.searches_remaining}/{selectedStatus.daily_search_limit} left</span>
+            )}
+          </summary>
+          <div className="absolute right-0 top-full z-20 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-800">{selectedStatus?.configured ? 'Search provider' : 'Setup required'}</span>
+              <span className={selectedStatus?.configured ? 'text-emerald-700' : 'text-amber-700'}>
+                {selectedStatus?.status || (selectedStatus?.configured ? 'Connected' : 'Not configured')}
+              </span>
+            </div>
+            {source === 'youtube' && selectedStatus?.configured && (
+              <p className="mt-2 text-xs text-slate-600">
+                {selectedStatus.searches_remaining} of {selectedStatus.daily_search_limit} daily searches remain; requests are spaced at least {selectedStatus.minimum_interval_seconds} seconds apart.
+              </p>
+            )}
+            {!selectedStatus?.configured && selectedStatus?.reason && (
+              <p className="mt-2 text-xs text-amber-800">{selectedStatus.reason} Add credentials to the server environment to enable this source.</p>
+            )}
+            {statuses.groq?.configured && statuses.groq.status !== 'ready' && (
+              <p role="status" className="mt-2 border-t border-slate-100 pt-2 text-xs text-amber-800">
+                Groq: {statuses.groq.status}. Text analysis may use Gemini fallback or local heuristics.
+              </p>
+            )}
+            {statuses.gemini?.configured && !statuses.gemini.status.startsWith('Configured') && (
+              <p role="status" className="mt-2 border-t border-slate-100 pt-2 text-xs text-amber-800">
+                Gemini: {statuses.gemini.status}. Gemini fallback and image analysis may be unavailable.
+              </p>
+            )}
+          </div>
+        </details>
       </div>
 
-      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
-        <select value={source} onChange={event => setSource(event.target.value)} className="select-field sm:w-52">
-          <option value="google-news">Google News (RSS)</option>
-          <option value="youtube">YouTube (Videos)</option>
-          <option value="reddit">Reddit (r/bihar)</option>
+      <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-[100px_125px_minmax(0,1fr)_auto] gap-2">
+        <select value={source} onChange={event => setSource(event.target.value)} className="select-field min-w-0 w-full px-2">
+          <option value="google-news">Google News</option>
+          <option value="reddit">Reddit</option>
+          <option value="youtube">YouTube</option>
+        </select>
+        <select
+          value={sectorId}
+          onChange={event => {
+            const nextId = event.target.value;
+            const nextSector = taxonomy.find(sector => sector.id === nextId);
+            setSectorId(nextId);
+            if (nextSector) setQuery(nextSector.example_query);
+          }}
+          className="select-field min-w-0 w-full px-2"
+          aria-label="Official OSINT sector"
+        >
+          <option value="">Choose official sector</option>
+          {taxonomy.map(sector => <option key={sector.id} value={sector.id}>{sector.label}</option>)}
         </select>
         <input
           value={query}
           onChange={event => setQuery(event.target.value)}
           maxLength={160}
           placeholder="Search Bihar civic issues, e.g. Patna water supply or Bihar road pothole"
-          className="input-field flex-1"
+          className="input-field min-w-0"
           required
         />
-        <button type="submit" disabled={searching || !selectedStatus?.configured}
-          className="btn-primary justify-center disabled:opacity-50">
+        <button type="submit" disabled={searching || !sourceAvailable}
+          className="btn-primary justify-center whitespace-nowrap px-3 disabled:opacity-50">
           {searching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
           {searching ? 'Searching…' : 'Search source'}
         </button>
       </form>
-      {!selectedStatus?.configured && selectedStatus?.reason && (
-        <p className="mt-2 text-xs text-amber-700">{selectedStatus.reason} Add credentials to the server environment to enable this source.</p>
+      {selectedSector && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-500">Official quick tags:</span>
+          {selectedSector.quick_tags.map(tag => (
+            <button key={tag} type="button" onClick={() => setQuery(`"${tag}"`)}
+              className="text-xs px-2.5 py-1 rounded-full border border-slate-200 bg-white text-slate-700 font-mono hover:bg-blue-50 hover:border-blue-200 hover:text-blue-800 transition-colors">
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="mt-2 text-xs text-slate-500">
+        Search one sector at a time using the organizers’ terms; broad Boolean fan-out is avoided to conserve YouTube quota.
+      </p>
+      {source === 'youtube' && selectedStatus?.searches_remaining === 0 && (
+        <p role="status" className="mt-2 text-xs text-amber-800">YouTube’s daily safety quota is reached. Search again tomorrow.</p>
       )}
       {searchError && <p role="alert" className="mt-2 text-sm text-rose-700">{searchError}</p>}
-
-      {items.length > 0 && (
-        <div className="mt-4 flex flex-col gap-2">
-          <div className="text-xs text-slate-500">{items.length} public results · Choose an item to run analysis and add it to reports.</div>
+    </section>
+    {(items.length > 0 || (searching && !searchError)) && (
+      <section className="card p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="text-sm font-bold text-slate-800">Public Search Results</div>
+          {items.length > 0 && <span className="text-xs text-slate-600">{items.length} results</span>}
+        </div>
+        {searching && items.length === 0 && <p className="text-sm text-slate-600">Searching public sources…</p>}
+        {items.length > 0 && (
+          <div className="flex flex-col gap-3">
           {items.map(item => {
             const action = itemActions[item.id];
+            const sourceStyle = item.source?.toLowerCase().includes('youtube')
+              ? 'bg-rose-50 text-rose-700 border-rose-200'
+              : item.source?.toLowerCase().includes('reddit')
+                ? 'bg-orange-50 text-orange-800 border-orange-200'
+                : 'bg-blue-50 text-blue-700 border-blue-200';
+            const descriptionTags = [...new Set(item.text?.match(/#[\p{L}\p{N}_]+/gu) || [])];
+            const description = item.text?.replace(/#[\p{L}\p{N}_]+/gu, '').replace(/\s+/g, ' ').trim();
             return (
-              <article key={item.id} className="rounded-lg border border-slate-200 p-3 bg-slate-50 flex flex-col gap-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex gap-3 min-w-0">
-                    {item.thumbnail_url && (
-                      <div className="relative shrink-0 w-24 h-16 rounded overflow-hidden bg-slate-900 border border-slate-200">
-                        <img src={item.thumbnail_url} alt={item.title} className="w-full h-full object-cover" />
-                        <span className="absolute bottom-1 right-1 px-1 py-0.5 text-[9px] font-bold text-white bg-red-600/90 rounded">VIDEO</span>
+              <article key={item.id} className="rounded-lg border border-slate-200/80 bg-white p-4 shadow-sm transition-all hover:shadow-md">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-3">
+                      {item.thumbnail_url && (
+                        <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-900">
+                          <img src={item.thumbnail_url} alt={item.title} className="h-full w-full object-cover" />
+                          <span className="absolute bottom-1 right-1 rounded bg-red-600/90 px-1 py-0.5 text-[9px] font-bold text-white">VIDEO</span>
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${sourceStyle}`}>{item.source}</span>
+                          {item.subreddit && <span className="text-xs font-semibold text-slate-700">r/{item.subreddit}</span>}
+                          <span className="text-xs font-semibold text-slate-800">{item.author}</span>
+                          {item.published_at && <span className="text-xs text-slate-600">{formatDistanceToNow(item.published_at)}</span>}
+                        </div>
+                        <a href={item.url || undefined} target="_blank" rel="noreferrer"
+                          className="text-sm font-semibold text-blue-700 hover:underline">
+                          {item.title}
+                        </a>
+                        {description && <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-slate-700">{description}</p>}
+                        {descriptionTags.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {descriptionTags.map(tag => <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">{tag}</span>)}
+                          </div>
+                        )}
                       </div>
-                    )}
-                    <div className="min-w-0">
-                      <a href={item.url || undefined} target="_blank" rel="noreferrer"
-                        className="text-sm font-semibold text-blue-700 hover:underline line-clamp-2">
-                        {item.title}
-                      </a>
-                      <div className="text-xs text-slate-500 mt-1 flex flex-wrap gap-x-2">
-                        <span className="font-medium text-slate-700">{item.source}{item.subreddit ? ` · ${item.subreddit}` : ''}</span>
-                        <span>{item.author}</span>
-                        {item.published_at && <span>{formatDistanceToNow(item.published_at)}</span>}
-                      </div>
-                      {item.text && <p className="text-xs text-slate-600 mt-1.5 line-clamp-2">{item.text}</p>}
                     </div>
                   </div>
                   <button type="button" onClick={() => handleImport(item)}
                     disabled={!item.url || action?.state === 'loading' || action?.state === 'saved'}
-                    className="btn-secondary text-xs whitespace-nowrap shrink-0 disabled:opacity-60">
+                    className="inline-flex items-center justify-center gap-1.5 self-start rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                     {action?.state === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Newspaper size={12} />}
                     {action?.state === 'saved' ? (action.duplicate ? 'Already added' : 'Added to reports') : 'Analyze & Add'}
                   </button>
                 </div>
                 {action?.state === 'saved' && (
-                  <p className="text-xs text-emerald-700 font-medium">
-                    {action.duplicate ? 'This source link was already recorded.' : `${action.department} · Severity ${action.severity}/10 · ${action.mode === 'gemini' ? 'Gemini AI' : 'Local Heuristic'} analysis`}
+                  <p className="mt-2 text-xs text-emerald-700">
+                    {action.duplicate ? 'This source link was already recorded.' : `${action.department} · Severity ${action.severity}/10 · ${action.mode?.startsWith('groq:') ? 'Groq' : action.mode?.startsWith('gemini') ? 'Gemini fallback' : 'Local heuristic'} analysis`}
                   </p>
                 )}
                 {action?.state === 'error' && <p role="alert" className="text-xs text-rose-700">{action.message}</p>}
               </article>
             );
           })}
-        </div>
-      )}
-      {!searching && !searchError && items.length === 0 && query && (
-        <p className="mt-3 text-xs text-slate-500">No source results loaded yet. Search to retrieve current public items.</p>
-      )}
-    </section>
+          </div>
+        )}
+      </section>
+    )}
+    </>
   );
 }
 
 function GrievanceRow({ g, onSelect, clusterCount }) {
   const sv = SEVERITY_CFG(g.severity_score);
-  const isSusp = g.authenticity_flag !== 'Likely Genuine Grievance';
+  const isSusp = isFlaggedSuspicious(g.authenticity_flag);
+  const verified = isVerifiedGenuine(g.authenticity_flag);
   const statusCls = STATUS_CLS[g.status] || STATUS_CLS.Received;
   return (
     <tr className="table-row-hover border-b border-slate-100 last:border-0" onClick={() => onSelect(g)}>
@@ -215,6 +301,7 @@ function GrievanceRow({ g, onSelect, clusterCount }) {
       <td className="px-4 py-3">
         <div className="text-sm font-medium text-slate-800">{g.location_tagged}</div>
         <div className="text-xs text-slate-500">{g.department?.split('(')[0]?.trim()}</div>
+        {g.sector_label && <div className="text-xs text-blue-700">{g.sector_label}</div>}
       </td>
       <td className="px-4 py-3">
         <span className={`badge border ${sv.cls}`}>
@@ -224,9 +311,9 @@ function GrievanceRow({ g, onSelect, clusterCount }) {
       </td>
       <td className="px-4 py-3">
         <div className="flex flex-col gap-1">
-          <span className={`badge border ${isSusp ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200'}`}>
-            {isSusp ? <AlertTriangle size={9}/> : <CheckCircle2 size={9}/>}
-            {isSusp ? `Risk ${g.authenticity_risk_score}%` : `Auth ${100 - g.authenticity_risk_score}%`}
+          <span className={`badge border ${isSusp ? 'bg-purple-50 text-purple-800 border-purple-200' : verified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+            {isSusp || !verified ? <AlertTriangle size={10}/> : <CheckCircle2 size={10}/>}
+            {isSusp ? 'Flagged after review' : verified ? 'Verified by human' : 'Unverified'}
           </span>
           {clusterCount > 1 && (
             <span className="badge bg-indigo-100 text-indigo-800 border border-indigo-200">
@@ -239,7 +326,7 @@ function GrievanceRow({ g, onSelect, clusterCount }) {
         <span className={`badge text-xs border ${statusCls}`}>{g.status}</span>
       </td>
       <td className="px-4 py-3">
-        <button type="button" onClick={e => { e.stopPropagation(); onSelect(g); }} className="btn-ghost text-xs py-1 px-2 text-blue-600">
+        <button type="button" onClick={e => { e.stopPropagation(); onSelect(g); }} className="rounded px-3 py-1 text-xs font-medium text-slate-800 bg-slate-100 hover:bg-slate-200 transition-colors">
           <ExternalLink size={11}/> View
         </button>
       </td>
@@ -249,7 +336,8 @@ function GrievanceRow({ g, onSelect, clusterCount }) {
 
 function GrievanceCard({ g, onSelect, clusterCount }) {
   const sv = SEVERITY_CFG(g.severity_score);
-  const isSusp = g.authenticity_flag !== 'Likely Genuine Grievance';
+  const isSusp = isFlaggedSuspicious(g.authenticity_flag);
+  const unverified = isUnverified(g.authenticity_flag);
   return (
     <div className="card-hover p-4" onClick={() => onSelect(g)}>
       <div className="flex items-start justify-between gap-2 mb-2">
@@ -275,10 +363,12 @@ function GrievanceCard({ g, onSelect, clusterCount }) {
       <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
         <span className="flex items-center gap-1"><MapPin size={10} className="text-emerald-600"/>{g.location_tagged}</span>
         <div className="flex gap-1.5">
-          {isSusp && <span className="badge bg-purple-100 text-purple-800 border border-purple-200">⚠ Suspicious</span>}
+          {isSusp && <span className="badge bg-purple-100 text-purple-800 border border-purple-200">⚠ Flagged</span>}
+          {!isSusp && unverified && <span className="badge bg-amber-100 text-amber-800 border border-amber-200">Unverified</span>}
           {clusterCount > 1 && <span className="badge bg-indigo-100 text-indigo-800 border border-indigo-200"><Copy size={9}/>{clusterCount}</span>}
         </div>
       </div>
+      {g.sector_label && <div className="text-xs text-blue-700 mt-2">{g.sector_label}</div>}
     </div>
   );
 }
@@ -336,8 +426,9 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
               <select value={filters.authenticity} onChange={e => onFilterChange('authenticity', e.target.value)}
                 className="select-field w-full pl-8">
                 <option value="">All Posts</option>
-                <option value="genuine">✅ Genuine Only</option>
-                <option value="suspicious">⚠️ Suspicious Only</option>
+                <option value="genuine">✅ Verified Genuine Only</option>
+                <option value="suspicious">⚠️ Flagged Only</option>
+                <option value="unverified">Unverified Only</option>
               </select>
             </div>
             <button onClick={onReset} className="btn-secondary px-3 flex-shrink-0"><RotateCcw size={13}/></button>
@@ -353,12 +444,12 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
               className={`text-xs px-2.5 py-1 rounded-full border transition-all font-mono ${
                 filters.hashtag === tag
                   ? 'bg-blue-600 border-blue-600 text-white'
-                  : 'border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600 bg-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-blue-50 hover:border-blue-200'
               }`}>{tag}</button>
           ))}
           <button onClick={() => onFilterChange('severity', filters.severity === '8' ? '' : '8')}
             className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
-              filters.severity === '8' ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-300 text-slate-600 hover:border-rose-400 hover:text-rose-600 bg-white'
+              filters.severity === '8' ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-rose-50 hover:border-rose-200'
             }`}>🔴 Critical Only</button>
         </div>
       </div>
@@ -399,9 +490,9 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
+                <tr className="border-b border-slate-200 bg-slate-100/80">
                   {['Source','Post Content','Location / Dept','Severity','Authenticity','Status','Action'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold text-slate-700 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>

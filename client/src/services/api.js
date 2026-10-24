@@ -43,10 +43,15 @@ export const api = {
     }),
 
   // POST /api/analyze
-  analyzePost: (postText, imageOcrText = '', grievanceId = null) =>
+  analyzePost: (postText, imageOcrText = '', grievanceId = null, image = null) =>
     request('/analyze', {
       method: 'POST',
-      body: JSON.stringify({ post_text: postText, image_ocr_text: imageOcrText, grievance_id: grievanceId }),
+      body: JSON.stringify({
+        post_text: postText,
+        image_ocr_text: imageOcrText,
+        grievance_id: grievanceId,
+        ...(image ? { image_data: image.base64, image_mime_type: image.mimeType } : {}),
+      }),
     }),
 
   // POST /api/sample-reports
@@ -57,6 +62,7 @@ export const api = {
     }),
 
   getPublicSourceStatus: () => request('/sources/status'),
+  getOsintTaxonomy: () => request('/sources/taxonomy'),
 
   searchPublicSource: (source, query) => {
     const params = new URLSearchParams({ source, q: query });
