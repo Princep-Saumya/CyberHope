@@ -149,6 +149,14 @@ export function useGrievances() {
     setFilters(DEFAULT_FILTERS);
   }, []);
 
+  const getClusterSiblings = useCallback((grievance) => {
+    if (!grievance?.duplicate_cluster_id) return [];
+    return grievances.filter((record) =>
+      record.id !== grievance.id
+      && record.duplicate_cluster_id === grievance.duplicate_cluster_id
+    );
+  }, [grievances]);
+
   const updateGrievanceStatus = useCallback(
     async (id, status) => {
       const result = await api.updateStatus(id, status);
@@ -260,11 +268,11 @@ export function useGrievances() {
   const reanalyzeAllGrievances = useCallback(
     async () => {
       const result = await api.reanalyzeAllGrievances();
-      await fetchGrievancesList();
+      await loadGrievances(filters);
       await loadStats();
       return result;
     },
-    [fetchGrievancesList, loadStats]
+    [filters, loadGrievances, loadStats]
   );
 
   return {
