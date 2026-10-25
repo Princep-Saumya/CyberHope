@@ -1,4 +1,4 @@
-﻿# CyberHope 🛡️
+# JanSuno AI 🛡️
 ### Bihar Cyber Hackathon 2026 · PS-04: AI-Driven Public Grievance Intelligence and Resolution Monitoring Platform
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -11,7 +11,7 @@
 
 ## Overview
 
-**CyberHope** is a full-stack intelligence platform for monitoring, classifying, clustering, and tracking public grievances across Bihar districts using AI-assisted OSINT analysis, geospatial visualization, and duplicate detection.
+**JanSuno AI** is a full-stack intelligence platform for monitoring, classifying, clustering, and tracking public grievances across Bihar districts using AI-assisted OSINT analysis, geospatial visualization, and duplicate detection.
 
 The application features a **light-themed SaaS layout** with a fixed left sidebar, clean white cards, and a dedicated top header bar for officer workstations.
 
@@ -93,7 +93,7 @@ client/src/
 ## Full Project Structure
 
 ```
-grievancepulse-ai/
+cyberhope/
 │
 ├── package.json               ← Root monorepo scripts (concurrently)
 ├── package-lock.json
@@ -113,7 +113,8 @@ grievancepulse-ai/
 │       ├── App.jsx            ← 2-column layout shell
 │       ├── index.css          ← Tailwind base + light-mode component classes
 │       ├── components/
-│       │   ├── Sidebar.jsx    ← Fixed left sidebar (brand + nav + AI/admin footer)
+│       │   ├── Sidebar.jsx    ← Fixed left sidebar (JanSuno AI brand + nav + AI/admin footer)
+│       │   ├── JanSunoLogo.jsx ← Custom shield-and-signal brand mark
 │       │   ├── Header.jsx     ← Page title + global search + KPI pills
 │       │   ├── GrievanceCard.jsx
 │       │   └── ResolutionModal.jsx
@@ -197,8 +198,8 @@ The following files are tracked in Git (everything not listed in `.gitignore`):
 ### 1 · Clone the repository
 
 ```bash
-git clone https://github.com/Amank-rise/GrievancePulse-AI.git
-cd GrievancePulse-AI
+git clone https://github.com/Amank-rise/cyberhope.git
+cd cyberhope
 ```
 
 ### 2 · Install all dependencies (root + client + server)

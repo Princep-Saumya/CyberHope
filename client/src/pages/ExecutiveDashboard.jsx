@@ -198,7 +198,7 @@ export default function ExecutiveDashboard({ grievances, stats, clusters, onSele
       {/* KPI row */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <KpiCard icon={TrendingUp}    label="Total Reports"      value={stats?.total ?? '—'}
-          sub={`${stats?.reference_records ?? 0} reference records`} color="#2563eb" bg="#3b82f6" accent="#3b82f6" highlightKey={highlightedReportId} />
+          sub={`${stats?.reference_records ?? 0} reference records`} color="#18181b" bg="#f59e0b" accent="#f59e0b" highlightKey={highlightedReportId} />
         <KpiCard icon={GitMerge}      label="Active Clusters"    value={stats?.cluster_count ?? '—'}
           sub={`${stats?.duplicates_clustered ?? 0} posts merged`} color="#7c3aed" bg="#8b5cf6" accent="#f59e0b" />
         <KpiCard icon={AlertTriangle} label="Critical Incidents" value={stats?.critical ?? '—'}

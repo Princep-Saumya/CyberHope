@@ -89,17 +89,17 @@ export default function Header({
           type="button"
           onClick={onSimulatePost}
           disabled={simulateDisabled}
-          className="btn-primary whitespace-nowrap text-xs py-1.5 px-3 flex items-center gap-1.5 rounded-lg disabled:opacity-60 disabled:cursor-wait"
+          className="whitespace-nowrap text-xs font-bold text-zinc-950 bg-amber-500 hover:bg-amber-400 py-1.5 px-3 flex items-center gap-1.5 rounded-lg shadow-sm transition-colors disabled:opacity-60 disabled:cursor-wait"
         >
           {simulatingPost ? <Loader2 size={12} className="animate-spin" /> : <Radio size={12} />}
           <span className="hidden lg:inline">{simulatingPost ? 'Simulating…' : 'Simulate Report'}</span>
         </button>
 
         {/* Live Counters */}
-        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-blue-800 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full">
-          <BarChart2 size={12} className="text-blue-500" />
+        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-zinc-700 bg-zinc-100 border border-zinc-200 px-3 py-1.5 rounded-full">
+          <BarChart2 size={12} className="text-zinc-500" />
           <span className="text-slate-800 font-bold font-mono">{totalPosts}</span>
-          <span className="text-blue-700">total</span>
+          <span className="text-zinc-600">total</span>
         </div>
 
         {realtimeIngested > 0 && (
