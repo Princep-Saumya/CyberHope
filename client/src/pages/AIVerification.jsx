@@ -5,42 +5,47 @@ import {
   ExternalLink, Download, Eye, AlertOctagon,
   MapPin, Clock, Flame, ShieldX, Video, Newspaper, Radio, Check, Upload,
   HelpCircle, Info, FileText, Copy, CheckCheck, RefreshCw, X,
-  Activity, ArrowRight, ChevronRight, MessageSquare
+  Activity, ArrowRight, ChevronDown, ChevronUp, Layers
 } from 'lucide-react';
 import { formatDistanceToNow, formatDateTime } from '../utils/dateUtils';
 import { isFlaggedSuspicious, isUnverified } from '../utils/verification';
 
-// ── Platform Configuration with Cybersecurity Color Accents ─────────────────
+// ── Platform Badges with Dedicated Color Accents ────────────────────────────
 const PLATFORM_ICONS = {
   'YouTube': {
     icon: Video,
     label: 'YouTube Video',
     color: 'text-rose-600 bg-rose-50 border-rose-200',
-    badge: 'bg-rose-50 text-rose-700 border-rose-200'
+    badge: 'bg-rose-50 text-rose-700 border-rose-200',
+    accentBorder: 'border-l-rose-500',
   },
   'Google News': {
     icon: Newspaper,
     label: 'Google News',
     color: 'text-sky-600 bg-sky-50 border-sky-200',
-    badge: 'bg-sky-50 text-sky-700 border-sky-200'
+    badge: 'bg-sky-50 text-sky-700 border-sky-200',
+    accentBorder: 'border-l-sky-500',
   },
   'X (Twitter)': {
     icon: Radio,
     label: 'X (Twitter)',
     color: 'text-slate-800 bg-slate-100 border-slate-300',
-    badge: 'bg-slate-100 text-slate-800 border-slate-300'
+    badge: 'bg-slate-100 text-slate-800 border-slate-300',
+    accentBorder: 'border-l-slate-600',
   },
   'Facebook': {
     icon: Radio,
     label: 'Facebook',
     color: 'text-indigo-600 bg-indigo-50 border-indigo-200',
-    badge: 'bg-indigo-50 text-indigo-700 border-indigo-200'
+    badge: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    accentBorder: 'border-l-indigo-500',
   },
   'Reddit': {
     icon: Radio,
     label: 'Reddit Discussion',
     color: 'text-orange-600 bg-orange-50 border-orange-200',
-    badge: 'bg-orange-50 text-orange-700 border-orange-200'
+    badge: 'bg-orange-50 text-orange-700 border-orange-200',
+    accentBorder: 'border-l-orange-500',
   },
 };
 
@@ -49,7 +54,8 @@ function getPlatformCfg(platform) {
     icon: Radio,
     label: platform || 'Web Feed',
     color: 'text-slate-600 bg-slate-50 border-slate-200',
-    badge: 'bg-slate-100 text-slate-700 border-slate-200'
+    badge: 'bg-slate-100 text-slate-700 border-slate-200',
+    accentBorder: 'border-l-slate-400',
   };
 }
 
@@ -63,7 +69,8 @@ function getReviewState(grievance) {
       badgeClass: 'text-emerald-700 bg-emerald-50 border-emerald-300 ring-1 ring-emerald-500/20',
       pillClass: 'bg-emerald-50 text-emerald-800 border-emerald-300',
       color: '#059669',
-      icon: ShieldCheck
+      icon: ShieldCheck,
+      cardBorder: 'border-l-emerald-500',
     };
   }
   if (grievance.officer_verdict === 'Confirmed Fake') {
@@ -74,7 +81,8 @@ function getReviewState(grievance) {
       badgeClass: 'text-rose-700 bg-rose-50 border-rose-300 ring-1 ring-rose-500/20',
       pillClass: 'bg-rose-50 text-rose-800 border-rose-300',
       color: '#e11d48',
-      icon: ShieldX
+      icon: ShieldX,
+      cardBorder: 'border-l-rose-500',
     };
   }
   if (grievance.officer_verdict === 'Under Field Investigation') {
@@ -85,7 +93,8 @@ function getReviewState(grievance) {
       badgeClass: 'text-amber-800 bg-amber-50 border-amber-300 ring-1 ring-amber-500/20',
       pillClass: 'bg-amber-50 text-amber-900 border-amber-300',
       color: '#d97706',
-      icon: Clock
+      icon: Clock,
+      cardBorder: 'border-l-amber-500',
     };
   }
   return {
@@ -95,14 +104,15 @@ function getReviewState(grievance) {
     badgeClass: 'text-sky-700 bg-sky-50 border-sky-300 ring-1 ring-sky-500/20',
     pillClass: 'bg-sky-50 text-sky-800 border-sky-300',
     color: '#0284c7',
-    icon: Eye
+    icon: Eye,
+    cardBorder: 'border-l-sky-500',
   };
 }
 
 // ── Plain-Language Metric Tooltip ───────────────────────────────────────────
 function MetricTooltip({ title, explanation }) {
   return (
-    <span className="group relative inline-flex items-center ml-1 cursor-help">
+    <span className="group relative inline-flex items-center ml-1.5 cursor-help">
       <HelpCircle size={13} className="text-slate-400 hover:text-slate-600 transition-colors" />
       <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden w-64 rounded-xl bg-slate-900 px-3.5 py-2.5 text-[11px] leading-relaxed text-slate-100 shadow-xl ring-1 ring-white/10 group-hover:block z-50">
         <span className="font-bold text-sky-400 block mb-1">{title}</span>
@@ -113,70 +123,96 @@ function MetricTooltip({ title, explanation }) {
   );
 }
 
-// ── Risk Indicator Card ─────────────────────────────────────────────────────
-function RiskIndicatorCard({ value = 0, label, description, tooltipTitle, tooltipText, isSeverity = false }) {
+// ── Color-Themed Risk Indicator Card ────────────────────────────────────────
+function ColorThemedRiskCard({ value = 0, label, description, tooltipTitle, tooltipText, isSeverity = false }) {
   const score = isSeverity ? value : Math.round(value);
   const pct = isSeverity ? Math.min(100, Math.max(0, value * 10)) : Math.min(100, Math.max(0, value));
 
-  let color = '#059669';
-  let bg = 'bg-emerald-500';
-  let badgeText = isSeverity ? (value >= 8 ? 'Critical Hazard' : value >= 6 ? 'High Severity' : value >= 4 ? 'Moderate' : 'Low Severity')
-                             : (pct >= 70 ? 'High Risk · Suspicious' : pct >= 40 ? 'Moderate Risk · Inspect' : 'Low Risk · Organic');
-  let badgeStyle = isSeverity
-    ? (value >= 8 ? 'bg-rose-100 text-rose-800 border-rose-300' : value >= 6 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-blue-100 text-blue-800 border-blue-300')
-    : (pct >= 70 ? 'bg-rose-100 text-rose-800 border-rose-300' : pct >= 40 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-emerald-100 text-emerald-800 border-emerald-300');
+  let colorTheme = {
+    cardBg: 'bg-emerald-50/50 border-emerald-200',
+    textColor: 'text-emerald-700',
+    badge: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+    barBg: 'bg-emerald-500',
+    tag: isSeverity ? 'Low Severity' : 'Low Risk · Organic',
+  };
 
   if (!isSeverity) {
     if (pct >= 70) {
-      color = '#e11d48';
-      bg = 'bg-rose-500';
+      colorTheme = {
+        cardBg: 'bg-rose-50/60 border-rose-200',
+        textColor: 'text-rose-700',
+        badge: 'bg-rose-100 text-rose-800 border-rose-300',
+        barBg: 'bg-rose-500',
+        tag: 'High Risk · Suspicious',
+      };
     } else if (pct >= 40) {
-      color = '#d97706';
-      bg = 'bg-amber-500';
+      colorTheme = {
+        cardBg: 'bg-amber-50/60 border-amber-200',
+        textColor: 'text-amber-700',
+        badge: 'bg-amber-100 text-amber-800 border-amber-300',
+        barBg: 'bg-amber-500',
+        tag: 'Moderate Risk · Inspect',
+      };
     }
   } else {
     if (value >= 8) {
-      color = '#e11d48';
-      bg = 'bg-rose-500';
+      colorTheme = {
+        cardBg: 'bg-rose-50/60 border-rose-200',
+        textColor: 'text-rose-700',
+        badge: 'bg-rose-100 text-rose-800 border-rose-300',
+        barBg: 'bg-rose-500',
+        tag: 'Critical Hazard',
+      };
     } else if (value >= 6) {
-      color = '#ea580c';
-      bg = 'bg-orange-500';
+      colorTheme = {
+        cardBg: 'bg-amber-50/60 border-amber-200',
+        textColor: 'text-amber-700',
+        badge: 'bg-amber-100 text-amber-800 border-amber-300',
+        barBg: 'bg-amber-500',
+        tag: 'High Severity',
+      };
     } else if (value >= 4) {
-      color = '#0284c7';
-      bg = 'bg-sky-500';
+      colorTheme = {
+        cardBg: 'bg-sky-50/60 border-sky-200',
+        textColor: 'text-sky-700',
+        badge: 'bg-sky-100 text-sky-800 border-sky-300',
+        barBg: 'bg-sky-500',
+        tag: 'Moderate Severity',
+      };
     }
   }
 
   return (
-    <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between">
+    <div className={`border rounded-xl p-4 shadow-xs flex flex-col justify-between transition-all ${colorTheme.cardBg}`}>
       <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center text-xs font-semibold text-slate-700">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center text-xs font-bold text-slate-700">
             <span>{label}</span>
             {tooltipText && <MetricTooltip title={tooltipTitle || label} explanation={tooltipText} />}
           </div>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${badgeStyle}`}>
-            {badgeText}
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${colorTheme.badge}`}>
+            {colorTheme.tag}
           </span>
         </div>
+
         <div className="flex items-baseline gap-2 mb-2">
-          <span className="text-2xl font-bold font-mono tracking-tight" style={{ color }}>
+          <span className={`text-2xl font-bold font-mono tracking-tight ${colorTheme.textColor}`}>
             {isSeverity ? `${score}/10` : `${score}%`}
           </span>
           <span className="text-[11px] text-slate-500">
-            {isSeverity ? 'Public impact magnitude' : 'Automated anomaly index'}
+            {isSeverity ? 'Infrastructure threat level' : 'Anomaly signal'}
           </span>
         </div>
       </div>
 
       <div>
-        <div className="h-2 w-full bg-slate-200/80 rounded-full overflow-hidden">
+        <div className="h-2 w-full bg-white/80 rounded-full overflow-hidden border border-slate-200/50">
           <div
-            className={`h-full rounded-full transition-all duration-700 ${bg}`}
+            className={`h-full rounded-full transition-all duration-700 ${colorTheme.barBg}`}
             style={{ width: `${pct}%` }}
           />
         </div>
-        <p className="text-[10px] text-slate-500 mt-1.5 leading-snug">
+        <p className="text-[10px] text-slate-600 mt-1.5 leading-snug">
           {description}
         </p>
       </div>
@@ -184,63 +220,68 @@ function RiskIndicatorCard({ value = 0, label, description, tooltipTitle, toolti
   );
 }
 
-// ── Outrage Indicator Card ──────────────────────────────────────────────────
-function OutrageIndicatorCard({ score = -0.4, label }) {
+// ── Color-Themed Outrage Indicator Card ─────────────────────────────────────
+function ColorThemedOutrageCard({ score = -0.4, label }) {
   const safeScore = score ?? -0.4;
   const outragePct = Math.round(((1.0 - safeScore) / 2.0) * 100);
 
-  let style = {
-    color: '#059669',
+  let theme = {
+    cardBg: 'bg-emerald-50/50 border-emerald-200',
+    textColor: 'text-emerald-700',
     badge: 'bg-emerald-100 text-emerald-800 border-emerald-300',
     tag: 'Calm / Positive',
-    bg: 'bg-emerald-500',
+    barBg: 'bg-emerald-500',
     desc: 'Citizen tone is balanced or informational.'
   };
 
   if (safeScore <= -0.7) {
-    style = {
-      color: '#e11d48',
+    theme = {
+      cardBg: 'bg-rose-50/60 border-rose-200',
+      textColor: 'text-rose-700',
       badge: 'bg-rose-100 text-rose-800 border-rose-300',
       tag: 'Critical Outrage',
-      bg: 'bg-rose-500',
-      desc: 'Extreme emotional distress or acute public frustration.'
+      barBg: 'bg-rose-500',
+      desc: 'Acute distress or extreme citizen frustration.'
     };
   } else if (safeScore <= -0.3) {
-    style = {
-      color: '#ea580c',
+    theme = {
+      cardBg: 'bg-orange-50/60 border-orange-200',
+      textColor: 'text-orange-700',
       badge: 'bg-orange-100 text-orange-800 border-orange-300',
       tag: 'High Distress',
-      bg: 'bg-orange-500',
-      desc: 'Urgent citizen concern demanding prompt acknowledgment.'
+      barBg: 'bg-orange-500',
+      desc: 'Urgent citizen concern demanding prompt attention.'
     };
   } else if (safeScore < 0.2) {
-    style = {
-      color: '#0284c7',
+    theme = {
+      cardBg: 'bg-sky-50/60 border-sky-200',
+      textColor: 'text-sky-700',
       badge: 'bg-sky-100 text-sky-800 border-sky-300',
       tag: 'Moderate Concern',
-      bg: 'bg-sky-500',
-      desc: 'Normal civic grievance tone without aggressive outrage.'
+      barBg: 'bg-sky-500',
+      desc: 'Standard civic grievance tone without severe anger.'
     };
   }
 
   return (
-    <div className="bg-slate-50/70 border border-slate-200 rounded-xl p-3.5 flex flex-col justify-between">
+    <div className={`border rounded-xl p-4 shadow-xs flex flex-col justify-between transition-all ${theme.cardBg}`}>
       <div>
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center text-xs font-semibold text-slate-700">
-            <Flame size={14} className="text-rose-500 mr-1" />
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center text-xs font-bold text-slate-700">
+            <Flame size={14} className="text-orange-500 mr-1" />
             <span>Public Outrage Index</span>
             <MetricTooltip
               title="Public Outrage Index"
-              explanation="Measures citizen sentiment and emotional distress intensity on public channels. High outrage indicates urgent community grievance requiring priority acknowledgment."
+              explanation="Measures citizen sentiment and emotional distress intensity on social feeds. Higher outrage indicates public friction needing de-escalation."
             />
           </div>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${style.badge}`}>
-            {label || style.tag}
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${theme.badge}`}>
+            {label || theme.tag}
           </span>
         </div>
+
         <div className="flex items-baseline gap-2 mb-2">
-          <span className="text-2xl font-bold font-mono tracking-tight" style={{ color: style.color }}>
+          <span className={`text-2xl font-bold font-mono tracking-tight ${theme.textColor}`}>
             {outragePct}%
           </span>
           <span className="text-[11px] text-slate-500 font-mono">
@@ -250,14 +291,14 @@ function OutrageIndicatorCard({ score = -0.4, label }) {
       </div>
 
       <div>
-        <div className="h-2 w-full bg-slate-200/80 rounded-full overflow-hidden">
+        <div className="h-2 w-full bg-white/80 rounded-full overflow-hidden border border-slate-200/50">
           <div
-            className={`h-full rounded-full transition-all duration-700 ${style.bg}`}
+            className={`h-full rounded-full transition-all duration-700 ${theme.barBg}`}
             style={{ width: `${outragePct}%` }}
           />
         </div>
-        <p className="text-[10px] text-slate-500 mt-1.5 leading-snug">
-          {style.desc}
+        <p className="text-[10px] text-slate-600 mt-1.5 leading-snug">
+          {theme.desc}
         </p>
       </div>
     </div>
@@ -411,7 +452,7 @@ function GrievanceWorkbench({ g, onReanalyze }) {
   );
 }
 
-// ── Full Forensic Analysis Modal (Opens on Card Click) ───────────────────────
+// ── Re-architected Forensic Analysis Modal (Organized, Readable, Color-Themed) ──
 function ForensicAnalysisModal({
   grievance,
   onClose,
@@ -474,18 +515,18 @@ function ForensicAnalysisModal({
         onClick={e => e.stopPropagation()}
       >
         {/* ── Modal Header ── */}
-        <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
+        <div className="p-4 sm:p-5 border-b border-slate-200 bg-white flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <span className={`p-2 rounded-xl shrink-0 border ${reviewState.badgeClass}`}>
               <reviewState.icon size={22} />
             </span>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`badge border text-[10px] font-bold py-0.5 px-2 flex items-center gap-1 ${platformCfg.badge}`}>
-                  <PIcon size={11} />
+                <span className={`badge border text-[11px] font-bold py-0.5 px-2.5 flex items-center gap-1.5 ${platformCfg.badge}`}>
+                  <PIcon size={12} />
                   <span>{grievance.platform}</span>
                 </span>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${reviewState.badgeClass}`}>
+                <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${reviewState.badgeClass}`}>
                   {reviewState.label}
                 </span>
               </div>
@@ -493,7 +534,7 @@ function ForensicAnalysisModal({
                 <span className="font-bold text-slate-900">{grievance.id}</span>
                 <button
                   onClick={() => onCopyId(grievance.id)}
-                  className="text-slate-400 hover:text-slate-700"
+                  className="text-slate-400 hover:text-slate-700 transition-colors"
                   title="Copy ID"
                 >
                   {copiedId === grievance.id ? <CheckCheck size={12} className="text-emerald-600" /> : <Copy size={12} />}
@@ -512,7 +553,7 @@ function ForensicAnalysisModal({
                 href={grievance.source_url}
                 target="_blank"
                 rel="noreferrer"
-                className="btn-secondary text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 text-sky-700 hover:text-sky-900 bg-white"
+                className="btn-secondary text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 text-sky-700 hover:text-sky-900 bg-sky-50/70 border-sky-200 hover:bg-sky-100"
               >
                 <ExternalLink size={12} />
                 <span>{grievance.platform === 'YouTube' ? 'Watch Video' : 'Inspect Source'}</span>
@@ -530,7 +571,7 @@ function ForensicAnalysisModal({
 
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-all"
+              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all"
               title="Close modal (Esc)"
             >
               <X size={18} />
@@ -538,105 +579,146 @@ function ForensicAnalysisModal({
           </div>
         </div>
 
-        {/* ── Modal Scrollable Body ── */}
-        <div className="p-5 sm:p-6 overflow-y-auto flex flex-col gap-5 text-left">
+        {/* ── Modal Scrollable Body: Logically Arranged & Color-Themed ── */}
+        <div className="p-5 sm:p-6 overflow-y-auto flex flex-col gap-5 text-left bg-slate-50/40">
 
-          {/* 1. Human-in-the-Loop Verdict Authorization (Prominent & High Priority) */}
-          <section className="bg-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-800">
-            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
-                <CheckCircle2 size={15} />
-                Authoritative Human Officer Verdict
+          {/* ════ CARD 1 (TOP): CITIZEN REPORT & MEDIA EVIDENCE ════ */}
+          {/* Color Theme: Clean Sky / Slate Blue */}
+          <section className="bg-white border border-sky-200/90 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col gap-3.5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <User size={14} className="text-sky-600" />
+                Citizen Public Grievance & Evidence
               </span>
-              {grievance.officer_verdict && (
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-violet-900/60 text-violet-200 border border-violet-700">
-                  Current: {grievance.officer_verdict}
-                </span>
-              )}
+              <span className="text-[11px] text-slate-500 font-mono">
+                {formatDistanceToNow(grievance.timestamp)}
+              </span>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed mb-3">
-              AI analysis provides predictive triage only. Authorize an official decision below to certify authenticity, flag disinformation, or dispatch a ground field check:
-            </p>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+              {/* Post Text & Context */}
+              <div className="md:col-span-7 flex flex-col gap-3">
+                <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-4">
+                  <p className="text-sm sm:text-base text-slate-900 leading-relaxed font-sans font-normal">
+                    "{grievance.post_text}"
+                  </p>
+                </div>
 
-            {grievance.officer_notes && (
-              <div className="bg-slate-800/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 mb-3">
-                <span className="font-semibold text-amber-400">Recorded Audit Note: </span>
-                <span className="italic">"{grievance.officer_notes}"</span>
-                <span className="text-slate-400 font-mono ml-2 text-[10px]">
-                  [{grievance.verified_by || 'CyberCell_Officer'} · {formatDateTime(grievance.verified_at)}]
-                </span>
+                {/* OCR Text if present */}
+                {grievance.image_ocr_text && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <span className="text-[11px] font-bold text-amber-800 uppercase block mb-1 flex items-center gap-1">
+                      <Img size={12} /> Extracted Document Text (OCR)
+                    </span>
+                    <p className="text-xs text-amber-900 font-mono leading-relaxed">
+                      "{grievance.image_ocr_text}"
+                    </p>
+                  </div>
+                )}
+
+                {/* Metadata row: Department & Location */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-blue-50/60 border border-blue-200/80 rounded-xl p-2.5 flex items-center gap-2">
+                    <Building2 size={16} className="text-blue-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-blue-700 font-bold uppercase block">Department</span>
+                      <span className="text-xs font-bold text-slate-900 truncate block">
+                        {grievance.department || 'General Administration'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-xl p-2.5 flex items-center gap-2">
+                    <MapPin size={16} className="text-emerald-600 shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-emerald-700 font-bold uppercase block">District</span>
+                      <span className="text-xs font-bold text-slate-900 truncate block">
+                        {grievance.location_tagged || 'Location unverified'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tagged Hashtags */}
+                {(grievance.hashtags || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {grievance.hashtags.map(h => (
+                      <span key={h} className="text-xs text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full font-mono">
+                        {h}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
 
-            <div className="flex flex-col gap-3">
-              <input
-                type="text"
-                placeholder="Enter verification rationale (e.g. video cross-checked, nodal officer called, site inspected)..."
-                value={officerNote}
-                onChange={e => setOfficerNote(e.target.value)}
-                className="bg-slate-800 border border-slate-700 text-white placeholder-slate-400 text-xs rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/50 w-full"
-              />
+              {/* Visual Evidence / Video Preview */}
+              <div className="md:col-span-5 flex flex-col gap-2">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wide flex items-center gap-1">
+                  <Video size={12} /> Visual / Media Evidence
+                </span>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {/* Verify Genuine */}
-                <button
-                  onClick={() => handleVerdict('Verified Genuine')}
-                  disabled={isVerifying}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
-                >
-                  <Check size={15} />
-                  <span>Verify Genuine</span>
-                </button>
-
-                {/* Confirm Fake */}
-                <button
-                  onClick={() => handleVerdict('Confirmed Fake')}
-                  disabled={isVerifying}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
-                >
-                  <ShieldX size={15} />
-                  <span>Confirm Fake</span>
-                </button>
-
-                {/* Request Field Check */}
-                <button
-                  onClick={() => handleVerdict('Under Field Investigation')}
-                  disabled={isVerifying}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 px-4 py-2.5 text-xs font-bold text-zinc-950 shadow-sm transition-all disabled:opacity-60"
-                >
-                  <Clock size={15} />
-                  <span>Request Field Check</span>
-                </button>
+                {grievance.image_url ? (
+                  <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-900 group h-52 shadow-xs">
+                    <img
+                      src={grievance.image_url}
+                      alt="Incident Evidence"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={e => { e.target.style.display = 'none'; }}
+                    />
+                    {grievance.platform === 'YouTube' && (
+                      <span className="absolute bottom-2 left-2 px-2.5 py-1 text-[10px] font-bold text-white bg-rose-600 rounded-md flex items-center gap-1 shadow">
+                        <Video size={12} /> YOUTUBE VIDEO
+                      </span>
+                    )}
+                    {grievance.source_url && (
+                      <a
+                        href={grievance.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute top-2 right-2 px-2.5 py-1 text-xs font-semibold text-white bg-slate-900/80 hover:bg-slate-900 rounded-lg flex items-center gap-1 backdrop-blur shadow"
+                      >
+                        <span>Open Media</span>
+                        <ExternalLink size={11} />
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <div className="h-52 rounded-xl border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-slate-400 text-xs p-4 text-center">
+                    <Img size={28} className="mb-2 text-slate-300" />
+                    <span className="font-semibold text-slate-600">No media file attached</span>
+                    <span className="text-[11px] text-slate-400 mt-1">Text dispatch from {grievance.platform}</span>
+                  </div>
+                )}
               </div>
             </div>
           </section>
 
-          {/* 2. AI Automated Triage Signals Trio */}
-          <section>
-            <div className="flex items-center justify-between mb-2.5">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+          {/* ════ CARD 2 (MIDDLE-1): AI AUTOMATED TRIAGE SIGNALS ════ */}
+          {/* Color Theme: Distinct Tri-color Status Tiles */}
+          <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
                 <Sparkles size={14} className="text-amber-500" />
                 AI Automated Triage Signals
-              </h3>
-              <span className="text-[10px] text-slate-400 font-medium">Model Advisory · Non-Binding</span>
+              </span>
+              <span className="text-[11px] text-slate-400 font-medium">Model Advisory (Non-Binding)</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <RiskIndicatorCard
+              <ColorThemedRiskCard
                 value={grievance.authenticity_risk_score || 15}
-                label="AI Authenticity Risk"
+                label="Authenticity Risk"
                 description="Anomaly score based on synthetic phrasing & astroturfing patterns."
                 tooltipTitle="AI Authenticity Risk"
                 tooltipText="Calculates the likelihood of synthetic manipulation, copied text, or non-organic civic claims based on linguistic patterns."
               />
 
-              <OutrageIndicatorCard
+              <ColorThemedOutrageCard
                 score={grievance.sentiment_score}
                 label={grievance.sentiment_label}
               />
 
-              <RiskIndicatorCard
+              <ColorThemedRiskCard
                 value={grievance.severity_score || 5}
                 label="Civic Severity Impact"
                 description="Infrastructure & public hazard magnitude on a 1-10 scale."
@@ -647,130 +729,21 @@ function ForensicAnalysisModal({
             </div>
           </section>
 
-          {/* 3. Citizen Post & Visual Media Preview */}
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Left: Text & Tags */}
-            <div className="flex flex-col gap-3">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5 flex items-center gap-1.5">
-                  <User size={13} />
-                  Citizen Post Content
-                </span>
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-800 leading-relaxed font-sans shadow-2xs">
-                  {grievance.post_text}
-                </div>
-              </div>
-
-              {grievance.image_ocr_text && (
-                <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1 flex items-center gap-1.5">
-                    <Img size={13} />
-                    Extracted OCR Document Text
-                  </span>
-                  <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 font-mono leading-relaxed">
-                    "{grievance.image_ocr_text}"
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5 flex items-center gap-1.5">
-                  <Hash size={13} />
-                  Tagged Keywords & Hashtags
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {(grievance.hashtags || []).length > 0 ? (
-                    grievance.hashtags.map(h => (
-                      <span key={h} className="text-xs text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full font-mono">
-                        {h}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-xs text-slate-400 italic">No specific hashtags tagged</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Media & Geocoding */}
-            <div className="flex flex-col gap-3">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5 flex items-center gap-1.5">
-                  <Video size={13} />
-                  Visual Evidence Preview
-                </span>
-
-                {grievance.image_url ? (
-                  <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-900 group h-44 shadow-2xs">
-                    <img
-                      src={grievance.image_url}
-                      alt="Incident Evidence"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      onError={e => { e.target.style.display = 'none'; }}
-                    />
-                    {grievance.platform === 'YouTube' && (
-                      <span className="absolute bottom-2 left-2 px-2 py-0.5 text-[10px] font-bold text-white bg-rose-600 rounded flex items-center gap-1 shadow">
-                        <Video size={11} /> YOUTUBE VIDEO EVIDENCE
-                      </span>
-                    )}
-                    {grievance.source_url && (
-                      <a
-                        href={grievance.source_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="absolute top-2 right-2 px-2.5 py-1 text-xs font-semibold text-white bg-slate-900/80 hover:bg-slate-900 rounded-lg flex items-center gap-1 backdrop-blur shadow"
-                      >
-                        <span>Inspect Source</span>
-                        <ExternalLink size={11} />
-                      </a>
-                    )}
-                  </div>
-                ) : (
-                  <div className="h-44 rounded-xl border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center text-slate-400 text-xs p-4 text-center">
-                    <Img size={24} className="mb-1 text-slate-300" />
-                    <span className="font-medium">No direct photo/video media attached</span>
-                    <span className="text-[11px] text-slate-400 mt-1">Text-based public dispatch from {grievance.platform}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  <div className="text-[11px] text-slate-500 mb-0.5 flex items-center gap-1">
-                    <Building2 size={12} /> Assigned Department
-                  </div>
-                  <div className="text-xs font-bold text-slate-800 line-clamp-1">
-                    {grievance.department || 'General Administration'}
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  <div className="text-[11px] text-slate-500 mb-0.5 flex items-center gap-1">
-                    <MapPin size={12} /> Detected District
-                  </div>
-                  <div className="text-xs font-bold text-slate-800 line-clamp-1">
-                    {grievance.location_tagged || 'Location unverified'}
-                    {grievance.coordinates ? ` (${grievance.coordinates.lat?.toFixed(2)}, ${grievance.coordinates.lng?.toFixed(2)})` : ''}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* 4. Explainable AI (XAI) Forensic Reasoning */}
-          <section className="bg-gradient-to-r from-violet-50/70 via-indigo-50/50 to-sky-50/70 border border-violet-200 rounded-2xl p-4 flex flex-col gap-3">
+          {/* ════ CARD 3 (MIDDLE-2): EXPLAINABLE AI (XAI) REASONING ════ */}
+          {/* Color Theme: Royal Violet / Indigo Gradient */}
+          <section className="bg-gradient-to-r from-violet-50/80 via-purple-50/60 to-indigo-50/80 border border-violet-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs font-bold text-violet-900 uppercase tracking-wide flex items-center gap-1.5">
                 <Sparkles size={14} className="text-violet-600" />
                 Gemini Explainable AI (XAI) Forensic Evidence Reasoning
               </span>
-              <span className="text-[11px] font-mono text-violet-700 font-semibold bg-white px-2 py-0.5 rounded-md border border-violet-200">
+              <span className="text-[11px] font-mono text-violet-700 font-semibold bg-white/90 px-2 py-0.5 rounded-md border border-violet-200">
                 Engine: {grievance.analysis_mode || 'gemini-3.5-flash'}
               </span>
             </div>
 
             {grievance.ai_summary && (
-              <p className="text-xs text-violet-950 font-medium italic bg-white/80 border border-violet-100 rounded-xl p-3 leading-relaxed shadow-2xs">
+              <p className="text-xs text-violet-950 font-medium italic bg-white/90 border border-violet-100 rounded-xl p-3.5 leading-relaxed shadow-2xs">
                 "{grievance.ai_summary}"
               </p>
             )}
@@ -784,7 +757,7 @@ function ForensicAnalysisModal({
                     'Linguistic structure matches organic citizen reporting pattern.',
                   ]
               ).map((reason, idx) => (
-                <div key={idx} className="flex items-start gap-2 text-xs text-slate-700 bg-white/90 rounded-lg p-2 border border-violet-100/70">
+                <div key={idx} className="flex items-start gap-2 text-xs text-slate-700 bg-white/90 rounded-lg p-2.5 border border-violet-100/70">
                   <span className="text-violet-600 font-bold shrink-0">•</span>
                   <span>{reason}</span>
                 </div>
@@ -792,7 +765,7 @@ function ForensicAnalysisModal({
             </div>
 
             {grievance.manipulation_signals && grievance.manipulation_signals.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-violet-200/50">
+              <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-violet-200/50">
                 <span className="text-[11px] font-bold text-slate-600">Forensic Flags:</span>
                 {grievance.manipulation_signals.map((sig, idx) => (
                   <span
@@ -810,17 +783,17 @@ function ForensicAnalysisModal({
             )}
           </section>
 
-          {/* 5. Supplementary Local OCR Drawer Toggle */}
-          <section className="pt-2 border-t border-slate-100">
+          {/* ════ CARD 4: EXTENDED OCR TOOLS (COLLAPSIBLE) ════ */}
+          <section className="pt-1">
             <button
               onClick={() => setShowExtendedOcr(!showExtendedOcr)}
-              className="w-full text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl p-2.5 transition-all flex items-center justify-between"
+              className="w-full text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl p-3 transition-all flex items-center justify-between"
             >
-              <span className="flex items-center gap-1.5">
-                <Img size={14} className="text-sky-600" />
-                <span>Extended Media Inspection & Local Hindi/English OCR Tools</span>
+              <span className="flex items-center gap-2">
+                <Img size={15} className="text-sky-600" />
+                <span>Optional: Extended Media Inspection & Local Hindi/English OCR Tools</span>
               </span>
-              <span className="text-xs text-sky-600">{showExtendedOcr ? 'Hide' : 'Open'}</span>
+              {showExtendedOcr ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
             </button>
 
             {showExtendedOcr && (
@@ -828,11 +801,88 @@ function ForensicAnalysisModal({
             )}
           </section>
 
+          {/* ════ CARD 5 (BOTTOM): HUMAN OFFICER VERDICT AUTHORIZATION ════ */}
+          {/* Color Theme: Deep Cyber Slate / Navy Console */}
+          <section className="bg-slate-900 text-white rounded-2xl p-5 shadow-md border border-slate-800 flex flex-col gap-3.5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-sky-400 flex items-center gap-2">
+                <CheckCircle2 size={16} />
+                Authoritative Human Officer Verdict Center
+              </span>
+              {grievance.officer_verdict && (
+                <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-violet-900/60 text-violet-200 border border-violet-700">
+                  Current: {grievance.officer_verdict}
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Having examined the citizen report, media, and AI triage signals, authorize an official decision below. Your decision will be stamped to the legal audit log:
+            </p>
+
+            {grievance.officer_notes && (
+              <div className="bg-slate-800/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-200">
+                <span className="font-semibold text-amber-400">Recorded Audit Note: </span>
+                <span className="italic">"{grievance.officer_notes}"</span>
+                <span className="text-slate-400 font-mono ml-2 text-[10px]">
+                  [{grievance.verified_by || 'CyberCell_DSP_Patna'} · {formatDateTime(grievance.verified_at)}]
+                </span>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 pt-1">
+              <input
+                type="text"
+                placeholder="Enter verification rationale (e.g. video cross-checked, nodal officer called, site inspected)..."
+                value={officerNote}
+                onChange={e => setOfficerNote(e.target.value)}
+                className="bg-slate-800 border border-slate-700 text-white placeholder-slate-400 text-xs rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sky-500/50 w-full"
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Verify Genuine */}
+                <button
+                  onClick={() => handleVerdict('Verified Genuine')}
+                  disabled={isVerifying}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 px-4 py-3 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
+                >
+                  <Check size={16} />
+                  <span>Verify Genuine</span>
+                </button>
+
+                {/* Confirm Fake */}
+                <button
+                  onClick={() => handleVerdict('Confirmed Fake')}
+                  disabled={isVerifying}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 px-4 py-3 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
+                >
+                  <ShieldX size={16} />
+                  <span>Confirm Fake</span>
+                </button>
+
+                {/* Request Field Check */}
+                <button
+                  onClick={() => handleVerdict('Under Field Investigation')}
+                  disabled={isVerifying}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 px-4 py-3 text-xs font-bold text-zinc-950 shadow-sm transition-all disabled:opacity-60"
+                >
+                  <Clock size={16} />
+                  <span>Request Field Check</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800">
+              <span>Officer Session: DSP Cyber Cell Patna</span>
+              <span>Audit Status: Legally Traceable</span>
+            </div>
+          </section>
+
         </div>
 
         {/* ── Modal Footer ── */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
-          <span className="font-mono">Audited under Bihar Cyber Crime & Grievance Framework</span>
+        <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
+          <span className="font-mono">Bihar Cyber Crime & Disinformation Monitoring Unit</span>
           <button
             onClick={onClose}
             className="btn-secondary text-xs py-1.5 px-4 rounded-xl"
@@ -1114,7 +1164,7 @@ export default function AIVerification({
         </div>
       </div>
 
-      {/* ── Report List View (Clean Full-Width Cards) ── */}
+      {/* ── The Clean List View of Reports ── */}
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
           <span>Available Reports ({filteredGrievances.length})</span>
@@ -1124,8 +1174,8 @@ export default function AIVerification({
         {filteredGrievances.length === 0 ? (
           <div className="card p-12 text-center text-slate-400 text-xs border-dashed border-2 bg-white">
             <AlertTriangle size={24} className="mx-auto mb-2 text-slate-300" />
-            <p className="font-semibold text-slate-600">No grievances found matching this query.</p>
-            <p className="text-[11px] text-slate-400 mt-1">Try resetting the search bar or selecting another filter tab.</p>
+            <p className="font-semibold text-slate-600">No reports found.</p>
+            <p className="text-[11px] text-slate-400 mt-1">Try clearing your search query or picking another filter tab.</p>
           </div>
         ) : (
           filteredGrievances.map(g => {
@@ -1140,12 +1190,9 @@ export default function AIVerification({
               <div
                 key={g.id}
                 onClick={() => setActiveModalGrievance(g)}
-                className="group card p-4 sm:p-5 cursor-pointer bg-white border border-slate-200/90 rounded-2xl hover:border-sky-400 hover:shadow-md transition-all flex flex-col gap-3 relative overflow-hidden"
+                className={`group card p-4 sm:p-5 cursor-pointer bg-white border border-slate-200/90 rounded-2xl hover:border-sky-400 hover:shadow-md transition-all flex flex-col gap-3 relative overflow-hidden border-l-4 ${reviewState.cardBorder}`}
               >
-                {/* Left accent indicator on hover */}
-                <span className="absolute left-0 top-0 bottom-0 w-1.5 bg-transparent group-hover:bg-sky-500 transition-colors" />
-
-                {/* Top Row: Platform, Handle, Department, Time */}
+                {/* Line 1: Platform, Author, Department, Time */}
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`badge border text-[11px] font-bold py-0.5 px-2.5 flex items-center gap-1.5 ${pCfg.badge}`}>
@@ -1175,13 +1222,13 @@ export default function AIVerification({
                   </span>
                 </div>
 
-                {/* Middle Row: Citizen Post Text Snippet */}
-                <p className="text-sm text-slate-700 leading-relaxed font-sans line-clamp-2">
-                  {g.post_text}
+                {/* Line 2: Citizen Post Snippet */}
+                <p className="text-sm text-slate-800 leading-relaxed font-sans line-clamp-2">
+                  "{g.post_text}"
                 </p>
 
-                {/* Bottom Row: Metrics & Open Action */}
-                <div className="flex items-center justify-between pt-3 border-t border-slate-100 flex-wrap gap-2.5">
+                {/* Line 3: Location, Status Badge, Risk Pill, Action */}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100 flex-wrap gap-2.5 text-xs">
                   <div className="flex items-center gap-2 flex-wrap">
                     {/* Status Badge */}
                     <span className={`badge border px-2.5 py-0.5 text-xs font-bold ${reviewState.badgeClass}`}>
