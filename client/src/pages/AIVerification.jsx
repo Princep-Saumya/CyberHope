@@ -1168,7 +1168,6 @@ export default function AIVerification({
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider px-1">
           <span>Available Reports ({filteredGrievances.length})</span>
-          <span className="text-slate-400 font-normal">Click any card to inspect full analysis & record verdict</span>
         </div>
 
         {filteredGrievances.length === 0 ? (
