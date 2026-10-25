@@ -1,11 +1,43 @@
-import { Search, AlertTriangle, Layers, BarChart2, Radio, Loader2, Wifi, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import {
+  Search,
+  AlertTriangle,
+  Layers,
+  Database,
+  Wifi,
+  RefreshCw,
+  X,
+  ShieldCheck,
+  Radio,
+  ChevronRight,
+} from 'lucide-react';
 
-const PAGE_TITLES = {
-  dashboard:  'Executive Dashboard',
-  osint:      'OSINT Intelligence Engine & Search',
-  clusters:   'Duplicate Cluster Detection',
-  ai:         'AI Verification Workbench',
-  resolution: 'Resolution Portal',
+const PAGE_METADATA = {
+  dashboard: {
+    title: 'Executive Dashboard',
+    category: 'Surveillance & Metrics',
+    subtext: 'High-level statewide grievance surveillance and sentiment monitoring',
+  },
+  osint: {
+    title: 'OSINT Intelligence & Search',
+    category: 'Public Ingestion',
+    subtext: 'Direct keyword, hashtag, and district scanning across Bihar',
+  },
+  clusters: {
+    title: 'Duplicate Cluster Detection',
+    category: 'Cross-Source Triangulation',
+    subtext: 'Cross-platform narrative coordination & viral post clustering',
+  },
+  ai: {
+    title: 'AI Verification Workbench',
+    category: 'Forensic Review',
+    subtext: 'Deep LLM multimodal analysis & human-in-the-loop validation',
+  },
+  resolution: {
+    title: 'Resolution Portal',
+    category: 'Department Dispatch',
+    subtext: 'Official task routing and inter-departmental action tracking',
+  },
 };
 
 export default function Header({
@@ -21,97 +53,163 @@ export default function Header({
   pollingRealtime,
   pollDisabled,
 }) {
-  const criticalCount   = stats?.critical ?? 0;
-  const clusterCount    = stats?.cluster_count ?? 0;
-  const totalPosts      = stats?.total ?? 0;
+  const searchInputRef = useRef(null);
+  const criticalCount    = stats?.critical ?? 0;
+  const clusterCount     = stats?.cluster_count ?? 0;
+  const totalPosts       = stats?.total ?? 0;
   const realtimeIngested = stats?.realtime_ingested ?? 0;
 
-  return (
-    <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between gap-4 flex-shrink-0">
+  const pageMeta = PAGE_METADATA[activePage] || {
+    title: 'Intelligence Workstation',
+    category: 'Cyber Cell',
+    subtext: 'Bihar Cyber Crime & Disinformation Monitoring Unit',
+  };
 
-      {/* Left: Page Title & Realtime Badge */}
+  // Keyboard shortcut listener: Cmd+K or Ctrl+K or '/' to focus search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === '/' && document.activeElement !== searchInputRef.current) {
+        if (!['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) {
+          e.preventDefault();
+          searchInputRef.current?.focus();
+        }
+      } else if (e.key === 'Escape' && document.activeElement === searchInputRef.current) {
+        searchInputRef.current?.blur();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  return (
+    <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/90 px-6 py-3 flex items-center justify-between gap-4 flex-shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.03)] z-10 sticky top-0">
+
+      {/* ── Left: Breadcrumb & Title & Live Status ── */}
       <div className="flex-shrink-0 min-w-0">
-        <div className="flex items-center gap-2.5">
-          <h1 className="text-base font-bold text-slate-900 truncate">
-            {PAGE_TITLES[activePage] || 'Dashboard'}
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
+          <span>Bihar Cyber Cell</span>
+          <ChevronRight size={10} className="text-slate-400" />
+          <span className="text-slate-700">{pageMeta.category}</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <h1 className="text-base font-extrabold text-slate-900 tracking-tight truncate">
+            {pageMeta.title}
           </h1>
-          {/* Live WebSocket status pill */}
+
+          {/* Live Socket Streaming Badge */}
           <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-colors ${
               isSocketConnected
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm'
                 : 'bg-amber-50 text-amber-700 border-amber-200'
             }`}
-            title={isSocketConnected ? 'Live WebSocket streaming active' : 'Connecting to live stream...'}
+            title={isSocketConnected ? 'Real-time WebSocket feed listener is connected' : 'Connecting to live telemetry socket...'}
           >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isSocketConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-              }`}
-            />
-            {isSocketConnected ? 'LIVE FEED ACTIVE' : 'CONNECTING'}
+            <span className="relative flex h-2 w-2">
+              {isSocketConnected && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              )}
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${isSocketConnected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+            </span>
+            <span>{isSocketConnected ? 'LIVE FEED ACTIVE' : 'CONNECTING'}</span>
           </span>
         </div>
-        <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">Bihar Cyber Cell · Real-Time Intelligence Workstation</p>
       </div>
 
-      {/* Center: Search Bar */}
-      <div className="flex-1 max-w-sm hidden md:block">
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      {/* ── Center: Search Bar with Keyboard Shortcut ── */}
+      <div className="flex-1 max-w-md hidden md:block">
+        <div className="relative group">
+          <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Search hashtags, districts, complaints..."
+            placeholder="Search hashtags, districts, complaints... (e.g. #Patna)"
             value={globalSearch}
             onChange={e => onGlobalSearch(e.target.value)}
-            className="bg-slate-100 border border-slate-200 text-slate-800 placeholder-slate-400 text-sm rounded-lg pl-9 pr-4 py-2 w-full focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15 transition-all"
+            className="bg-slate-100/80 hover:bg-slate-100 border border-slate-200/90 text-slate-800 placeholder-slate-400 text-xs rounded-xl pl-9 pr-14 py-2 w-full focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 transition-all shadow-inner"
           />
+          {globalSearch ? (
+            <button
+              onClick={() => onGlobalSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded hover:bg-slate-200 transition-colors"
+              title="Clear search"
+            >
+              <X size={13} />
+            </button>
+          ) : (
+            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 pointer-events-none">
+              <kbd className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-white text-slate-500 border border-slate-300 shadow-xs">
+                ⌘K
+              </kbd>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Right: Live KPI Pills & Stream Actions */}
-      <div className="flex items-center justify-end gap-2 flex-shrink-0 flex-wrap">
+      {/* ── Right: Live KPI Pills, Stream Actions, & Officer Avatar ── */}
+      <div className="flex items-center justify-end gap-2.5 flex-shrink-0 flex-wrap">
 
         {/* Scan Real-Time Feeds Button */}
         <button
           type="button"
           onClick={onPollRealtime}
           disabled={pollDisabled}
-          className="btn-secondary text-xs flex items-center gap-1.5 py-1.5 px-3 border border-slate-200 text-slate-700 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
-          title="Query live Bihar public feeds now"
+          className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 hover:text-slate-900 text-xs font-bold shadow-sm transition-all disabled:opacity-50"
+          title="Query live Bihar public feeds (YouTube & Google News) now"
         >
-          <RefreshCw size={12} className={pollingRealtime ? 'animate-spin text-blue-600' : 'text-slate-500'} />
-          <span className="hidden lg:inline">{pollingRealtime ? 'Scanning Feeds…' : 'Poll Real-Time Feed'}</span>
+          <RefreshCw size={13} className={pollingRealtime ? 'animate-spin text-blue-600' : 'text-slate-500'} />
+          <span className="hidden lg:inline">{pollingRealtime ? 'Scanning Feeds…' : 'Poll Live Feeds'}</span>
         </button>
 
         {/* Live Counters */}
-        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-zinc-700 bg-zinc-100 border border-zinc-200 px-3 py-1.5 rounded-full">
-          <BarChart2 size={12} className="text-zinc-500" />
-          <span className="text-slate-800 font-bold font-mono">{totalPosts}</span>
-          <span className="text-zinc-600">total</span>
+        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-100/80 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
+          <Database size={13} className="text-slate-500" />
+          <span className="text-slate-900 font-extrabold font-mono">{totalPosts}</span>
+          <span className="text-slate-500">records</span>
         </div>
 
         {realtimeIngested > 0 && (
-          <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full">
-            <Wifi size={12} className="text-emerald-500" />
-            <span className="font-bold font-mono">{realtimeIngested}</span>
-            <span className="text-emerald-600">live</span>
+          <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50 border border-cyan-200 px-2.5 py-1.5 rounded-xl">
+            <Wifi size={13} className="text-cyan-600" />
+            <span className="font-extrabold font-mono text-cyan-900">{realtimeIngested}</span>
+            <span className="text-cyan-700">live</span>
           </div>
         )}
 
-        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-full">
-          <Layers size={12} className="text-indigo-500" />
-          <span className="font-bold font-mono">{clusterCount}</span>
-          <span className="text-indigo-500">clusters</span>
-        </div>
+        {clusterCount > 0 && (
+          <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-xl">
+            <Layers size={13} className="text-indigo-600" />
+            <span className="font-extrabold font-mono text-indigo-900">{clusterCount}</span>
+            <span className="text-indigo-700">clusters</span>
+          </div>
+        )}
 
         {criticalCount > 0 && (
-          <div className="flex items-center gap-1.5 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-full">
-            <AlertTriangle size={12} className="text-rose-500 animate-pulse" />
-            <span className="font-bold font-mono">{criticalCount}</span>
-            <span className="text-rose-600">critical</span>
+          <div className="flex items-center gap-1.5 text-xs font-bold text-rose-800 bg-rose-50 border border-rose-300 px-2.5 py-1.5 rounded-xl shadow-xs">
+            <AlertTriangle size={13} className="text-rose-600 animate-pulse" />
+            <span className="font-extrabold font-mono text-rose-900">{criticalCount}</span>
+            <span className="text-rose-700">critical</span>
           </div>
         )}
+
+        {/* Officer Active Session Chip */}
+        <div className="hidden xl:flex items-center gap-2 pl-2 border-l border-slate-200/90">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-slate-900 to-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 font-extrabold text-xs shadow-sm">
+            P
+          </div>
+          <div className="text-left">
+            <div className="text-xs font-bold text-slate-800 leading-tight">DSP Patna</div>
+            <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1 leading-none mt-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Active
+            </div>
+          </div>
+        </div>
+
       </div>
     </header>
   );

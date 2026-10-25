@@ -186,7 +186,7 @@ export default function App() {
     <div className="flex h-screen bg-slate-50 overflow-hidden">
 
       {/* ── Fixed Left Sidebar ── */}
-      <Sidebar active={activePage} onNavigate={handleNavigate} analysisMode={stats?.analysis_mode} />
+      <Sidebar active={activePage} onNavigate={handleNavigate} analysisMode={stats?.analysis_mode} stats={stats} />
 
       {/* ── Right: Main Content Column ── */}
       <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
