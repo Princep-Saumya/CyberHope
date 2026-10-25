@@ -28,7 +28,7 @@ const NAV_GROUPS = [
         label: 'Live Citizen Feeds',
         icon: Radio,
         badgeKey: 'live',
-        description: 'YouTube & public news feeds',
+        description: 'Reddit, YouTube & public feeds',
       },
     ],
   },

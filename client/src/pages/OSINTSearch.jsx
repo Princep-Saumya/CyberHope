@@ -218,7 +218,9 @@ function PublicSourceSearch({ onImportSourceItem }) {
                       {item.thumbnail_url && (
                         <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-900">
                           <img src={item.thumbnail_url} alt={item.title} className="h-full w-full object-cover" />
-                          <span className="absolute bottom-1 right-1 rounded bg-red-600/90 px-1 py-0.5 text-[9px] font-bold text-white">VIDEO</span>
+                          <span className={`absolute bottom-1 right-1 rounded px-1 py-0.5 text-[9px] font-bold text-white ${item.source === 'YouTube' ? 'bg-red-600/90' : 'bg-orange-600/90'}`}>
+                            {item.source === 'YouTube' ? 'VIDEO' : 'IMAGE'}
+                          </span>
                         </div>
                       )}
                       <div className="min-w-0 flex-1">

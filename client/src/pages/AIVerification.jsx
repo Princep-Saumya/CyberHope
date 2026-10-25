@@ -670,6 +670,11 @@ function ForensicAnalysisModal({
                         <Video size={12} /> YOUTUBE VIDEO
                       </span>
                     )}
+                    {grievance.platform === 'Reddit' && (
+                      <span className="absolute bottom-2 left-2 px-2.5 py-1 text-[10px] font-bold text-white bg-orange-600 rounded-md flex items-center gap-1 shadow">
+                        <Radio size={12} /> REDDIT DISCUSSION
+                      </span>
+                    )}
                     {grievance.source_url && (
                       <a
                         href={grievance.source_url}

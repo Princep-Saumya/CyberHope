@@ -3,6 +3,9 @@ import { AlertTriangle, CheckCircle2, Copy, ExternalLink, HelpCircle } from 'luc
 import { isFlaggedSuspicious, isVerifiedGenuine } from '../utils/verification';
 
 const PLATFORM_COLORS = {
+  'Reddit': 'bg-orange-950/80 text-orange-300 border-orange-800/80',
+  'YouTube': 'bg-rose-950/80 text-rose-300 border-rose-800/80',
+  'Google News': 'bg-sky-950/80 text-sky-300 border-sky-800/80',
   'X (Twitter)': 'bg-gray-900 text-gray-200 border-gray-700',
   'Facebook': 'bg-blue-900 text-blue-200 border-blue-800',
   'Instagram': 'bg-pink-900 text-pink-200 border-pink-800',
@@ -10,6 +13,9 @@ const PLATFORM_COLORS = {
 };
 
 const PLATFORM_ICONS = {
+  'Reddit': '🤖',
+  'YouTube': '▶',
+  'Google News': '📰',
   'X (Twitter)': '𝕏',
   'Facebook': 'f',
   'Instagram': '◉',

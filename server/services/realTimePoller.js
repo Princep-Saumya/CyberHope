@@ -3,7 +3,7 @@
  * Continuously discovers and ingests live public grievances, runs AI analysis, and broadcasts via WebSockets.
  */
 
-const { searchGoogleNews, searchYouTube } = require('./publicSources');
+const { searchGoogleNews, searchYouTube, searchReddit } = require('./publicSources');
 const { analyzePost } = require('./geminiService');
 const { addGrievance, calcStats } = require('./storeService');
 const { getPollQuery } = require('./osintTaxonomy');
@@ -25,7 +25,7 @@ let pollingStats = {
   total_ingested_live: 0,
   current_query: '',
   current_sector: '',
-  current_source: 'Google News RSS',
+  current_source: 'Reddit / News RSS',
 };
 
 async function pollOnce() {
@@ -52,6 +52,21 @@ async function pollOnce() {
       });
 
       if (!sourceResult.items?.length) {
+        pollingStats.current_source = 'Reddit (r/bihar)';
+        sourceResult = await searchReddit(query).catch(err => {
+          console.warn(`[RealTimePoller] Reddit fallback error (${query}):`, err.message);
+          return { items: [] };
+        });
+      }
+    } else if (pollingStats.total_polls % 2 === 1) {
+      // Ingest live Reddit feed discussions
+      pollingStats.current_source = 'Reddit (r/bihar)';
+      sourceResult = await searchReddit(query).catch(err => {
+        console.warn(`[RealTimePoller] Reddit search error (${query}):`, err.message);
+        return { items: [] };
+      });
+
+      if (!sourceResult.items?.length) {
         pollingStats.current_source = 'Google News RSS';
         sourceResult = await searchGoogleNews(query).catch(err => {
           console.warn(`[RealTimePoller] News fallback error (${query}):`, err.message);
@@ -59,11 +74,20 @@ async function pollOnce() {
         });
       }
     } else {
+      // Ingest live Google News feeds
       pollingStats.current_source = 'Google News RSS';
       sourceResult = await searchGoogleNews(query).catch(err => {
         console.warn(`[RealTimePoller] News search error (${query}):`, err.message);
         return { items: [] };
       });
+
+      if (!sourceResult.items?.length) {
+        pollingStats.current_source = 'Reddit (r/bihar)';
+        sourceResult = await searchReddit(query).catch(err => {
+          console.warn(`[RealTimePoller] Reddit fallback error (${query}):`, err.message);
+          return { items: [] };
+        });
+      }
     }
 
     const items = sourceResult.items || [];
@@ -81,11 +105,19 @@ async function pollOnce() {
       if (useGemini) usedGeminiThisPoll = true;
       const analysis = await analyzePost(postText, '', { useGemini });
 
+      const platformName = item.source || (item.subreddit ? 'Reddit' : 'Google News');
+      let authorHandle = item.author;
+      if (!authorHandle) {
+        authorHandle = platformName === 'Reddit' ? 'u/bihar_redditor' : '@bihar_live_desk';
+      } else if (!authorHandle.startsWith('@') && !authorHandle.startsWith('u/')) {
+        authorHandle = platformName === 'Reddit' ? `u/${authorHandle.replace(/^\/?u\//, '')}` : `@${authorHandle.replace(/\s+/g, '_').toLowerCase()}`;
+      }
+
       const id = `LIVE-${Date.now()}-${Math.floor(Math.random() * 9000 + 1000)}`;
       const record = {
         id,
-        platform: item.source || 'Google News',
-        author_handle: item.author ? (item.author.startsWith('@') ? item.author : `@${item.author.replace(/\s+/g, '_').toLowerCase()}`) : '@bihar_live_desk',
+        platform: platformName,
+        author_handle: authorHandle,
         timestamp: item.published_at || new Date().toISOString(),
         post_text: postText,
         image_url: item.thumbnail_url || item.image_url || null,

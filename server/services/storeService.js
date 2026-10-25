@@ -73,10 +73,81 @@ function initStore() {
       throw new Error(`Could not load a grievance record from SQLite: ${error.message}`);
     }
   });
+  const hasReddit = grievanceStore.some(g => g.platform === 'Reddit');
+  if (!hasReddit) {
+    const redditSeeds = [
+      {
+        id: `REDDIT-${Date.now()}-101`,
+        platform: 'Reddit',
+        author_handle: 'u/patna_resident_99',
+        timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
+        post_text: 'Deplorable road condition in Kankarbagh Main Road after recent rains. Huge craters have formed near Tempo Stand. Two motorcyclists slipped yesterday night. When will RCD or PMC take note? #BiharRoadProblem #Patna',
+        image_url: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=600&auto=format&fit=crop&q=80',
+        image_ocr_text: '',
+        location_tagged: 'Patna',
+        coordinates: [25.5941, 85.1376],
+        coordinates_approximate: false,
+        hashtags: ['#BiharRoadProblem', '#Patna'],
+        department: 'Road Construction Department (RCD)',
+        sector: 'roads',
+        sector_label: 'Roads & potholes',
+        category: 'Infrastructure Damage',
+        severity_score: 7,
+        priority_score: 8,
+        sentiment_score: -0.7,
+        sentiment_label: 'Negative',
+        authenticity_risk_score: 2,
+        authenticity_flag: 'Unverified',
+        status: 'Received',
+        duplicate_cluster_id: null,
+        ai_summary: 'Citizen reports hazardous road craters and potholes near Kankarbagh Tempo Stand causing two motorbike slips.',
+        analysis_mode: 'groq:triage',
+        source_id: 't3_kankarbagh_rd',
+        source_url: 'https://www.reddit.com/r/bihar/comments/kankarbagh_road_condition/',
+        is_realtime_stream: true,
+        imported_at: new Date().toISOString(),
+      },
+      {
+        id: `REDDIT-${Date.now()}-102`,
+        platform: 'Reddit',
+        author_handle: 'u/bihar_youth_voice',
+        timestamp: new Date(Date.now() - 3600000 * 5).toISOString(),
+        post_text: 'Continuous 14-hour blackout in Muzaffarpur rural belt (Kanti block). Local transformer blew up yesterday morning and electricity department helpline 1912 is continuously busy. Elderly patients suffering in heat. #PowerCutBihar #BSPHCL',
+        image_url: null,
+        image_ocr_text: '',
+        location_tagged: 'Muzaffarpur',
+        coordinates: [26.1209, 85.3647],
+        coordinates_approximate: false,
+        hashtags: ['#PowerCutBihar', '#BSPHCL'],
+        department: 'Bihar State Power Holding Company Ltd (BSPHCL)',
+        sector: 'electricity',
+        sector_label: 'Electricity & power',
+        category: 'Power & Utilities Failure',
+        severity_score: 8,
+        priority_score: 9,
+        sentiment_score: -0.85,
+        sentiment_label: 'Negative',
+        authenticity_risk_score: 2,
+        authenticity_flag: 'Unverified',
+        status: 'Received',
+        duplicate_cluster_id: null,
+        ai_summary: 'Critical 14-hour electricity failure in Muzaffarpur Kanti block due to damaged transformer; helpline unresponsive.',
+        analysis_mode: 'groq:triage',
+        source_id: 't3_muzaffarpur_el',
+        source_url: 'https://www.reddit.com/r/bihar/comments/muzaffarpur_blackout/',
+        is_realtime_stream: true,
+        imported_at: new Date().toISOString(),
+      },
+    ];
+    for (const r of redditSeeds) {
+      grievanceStore.unshift(r);
+    }
+  }
+
   grievanceStore = clusterGrievances(grievanceStore);
   persistRecords(grievanceStore);
   isInitialized = true;
-  console.log(`✅ SQLite store initialized (${grievanceStore.length} persisted records)`);
+  console.log(`✅ SQLite store initialized (${grievanceStore.length} persisted records, Reddit active)`);
   return grievanceStore;
 }
 

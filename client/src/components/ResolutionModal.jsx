@@ -155,6 +155,21 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
               <span className="inline-flex items-center gap-1.5">
                 <MapPin size={14} className="text-slate-600" /> {locationText}
               </span>
+              {grievance.source_url ? (
+                <a
+                  href={grievance.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-colors"
+                >
+                  <span>{grievance.platform === 'Reddit' ? 'View on Reddit' : grievance.platform === 'YouTube' ? 'Watch on YouTube' : 'View Source'}</span>
+                  <ExternalLink size={11} />
+                </a>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                  {grievance.platform || 'Public Feed'}
+                </span>
+              )}
             </div>
 
             <div className="p-4 sm:p-5 bg-slate-50 rounded-xl border border-slate-200">
@@ -185,7 +200,7 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
                     rel="noreferrer"
                     className="absolute top-2.5 right-2.5 px-3 py-1 text-xs font-semibold text-white bg-slate-900/80 hover:bg-slate-900 rounded-lg flex items-center gap-1.5 backdrop-blur border border-white/20 transition-all shadow-md"
                   >
-                    <span>{grievance.platform === 'YouTube' ? 'Watch on YouTube' : 'View Source'}</span>
+                    <span>{grievance.platform === 'YouTube' ? 'Watch on YouTube' : grievance.platform === 'Reddit' ? 'View on Reddit' : 'View Source'}</span>
                     <ExternalLink size={12} />
                   </a>
                 )}

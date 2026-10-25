@@ -121,7 +121,7 @@ export default function Header({
           onClick={onPollRealtime}
           disabled={pollDisabled}
           className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 hover:shadow-xs active:scale-95 text-slate-700 hover:text-slate-900 text-xs font-bold shadow-2xs transition-all disabled:opacity-50"
-          title="Query live Bihar public feeds (YouTube & Google News) now"
+          title="Query live Bihar public feeds (Reddit, YouTube & Google News) now"
         >
           <RefreshCw size={13} className={pollingRealtime ? 'animate-spin text-blue-600' : 'text-slate-500'} />
           <span className="hidden sm:inline">{pollingRealtime ? 'Scanning…' : 'Scan Live Feeds'}</span>
