@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
-  CheckCircle2, Clock, AlertTriangle, FileText, Send,
+  CheckCircle2, Clock, AlertTriangle, FileText, Save,
   ChevronDown, ChevronRight, MapPin, Building2, Calendar,
   User, Download, Zap, Loader2, Megaphone
 } from 'lucide-react';
@@ -287,15 +287,18 @@ function ResolutionRow({ g, onUpdate, onEscalate }) {
 
             <div className="bg-white border border-slate-200 rounded-xl p-3">
               <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                <FileText size={11}/>Citizen Acknowledgment
+                <FileText size={11}/>Citizen Update Draft
               </div>
+              <p className="mb-2 text-[11px] leading-relaxed text-slate-600">
+                This is a public-facing response draft. Saving it records the text locally; it does not send a message to the citizen.
+              </p>
               <textarea rows={4} value={response}
                 onChange={e => setResponse(e.target.value)}
                 className="input-field resize-none text-xs font-mono leading-relaxed mb-2"/>
               <div className="flex gap-2">
-                <button onClick={handleRecordAcknowledgment} disabled={ackLoading} className="btn-primary text-xs py-1.5 flex-1 justify-center disabled:opacity-60">
-                  {ackLoading ? <Loader2 size={12} className="animate-spin"/> : <Send size={12}/>}
-                  {acknowledgmentRecorded ? '✓ Recorded locally' : ackLoading ? 'Saving…' : 'Record Acknowledgment'}
+                <button onClick={handleRecordAcknowledgment} disabled={ackLoading} className="text-xs font-bold text-zinc-950 bg-amber-500 hover:bg-amber-400 rounded-lg px-3 py-1.5 flex-1 justify-center inline-flex items-center gap-2 transition-colors disabled:opacity-60">
+                  {ackLoading ? <Loader2 size={12} className="animate-spin"/> : <Save size={12}/>}
+                  {ackLoading ? 'Saving draft…' : acknowledgmentRecorded ? 'Draft saved locally' : 'Save response draft'}
                 </button>
                 <button onClick={() => {
                   setResponse(fillTemplate(RESPONSE_TEMPLATES[localStatus] || '', g));
@@ -305,7 +308,7 @@ function ResolutionRow({ g, onUpdate, onEscalate }) {
               </div>
               {acknowledgmentRecorded && (
                 <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2 font-medium">
-                  Saved to the temporary in-memory audit only. No message was sent to the citizen.
+                  Saved to the local audit only. No message was sent to the citizen.
                 </div>
               )}
             </div>

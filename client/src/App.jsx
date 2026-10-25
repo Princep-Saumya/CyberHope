@@ -12,6 +12,7 @@ import { X, ExternalLink, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const [activePage, setActivePage]     = useState('dashboard');
+  const [selectedVerificationId, setSelectedVerificationId] = useState(null);
   const [globalSearch, setGlobalSearch] = useState('');
   const [pollingRealtime, setPollingRealtime] = useState(false);
   const [pollCooldown, setPollCooldown] = useState(false);
@@ -136,6 +137,12 @@ export default function App() {
     setActivePage(page);
   }, []);
 
+  const handleOpenAIReview = useCallback((grievance) => {
+    setSelectedVerificationId(grievance.id);
+    setSelectedGrievance(null);
+    setActivePage('ai');
+  }, [setSelectedGrievance]);
+
   const handleInspectIncoming = useCallback((id) => {
     const target = grievances.find(g => g.id === id);
     if (target) {
@@ -162,6 +169,7 @@ export default function App() {
         return (
           <AIVerification
             grievances={grievances}
+            selectedGrievanceId={selectedVerificationId}
             onReanalyze={reanalyzeGrievance}
             onVerify={verifyGrievance}
             onReanalyzeAll={reanalyzeAllGrievances}
@@ -307,6 +315,7 @@ export default function App() {
           onClose={() => setSelectedGrievance(null)}
           onStatusUpdate={updateGrievanceStatus}
           onReanalyze={reanalyzeGrievance}
+          onOpenAIReview={handleOpenAIReview}
         />
       )}
     </div>

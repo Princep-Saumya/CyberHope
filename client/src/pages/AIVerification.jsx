@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Brain, ShieldAlert, ShieldCheck, AlertTriangle, Loader2, Image as Img,
   Hash, User, Building2, Sparkles, Search, Filter, CheckCircle2,
-  ExternalLink, Download, RefreshCw, Eye, AlertOctagon, MessageSquare,
+  ExternalLink, Download, Eye, AlertOctagon, MessageSquare,
   MapPin, Clock, Flame, ShieldX, Video, Newspaper, Radio, Check, Upload
 } from 'lucide-react';
 import { formatDistanceToNow, formatDateTime } from '../utils/dateUtils';
@@ -18,6 +18,19 @@ const PLATFORM_ICONS = {
 
 function getPlatformCfg(platform) {
   return PLATFORM_ICONS[platform] || { icon: Radio, color: 'text-slate-600 bg-slate-50 border-slate-200' };
+}
+
+function getReviewState(grievance) {
+  if (grievance.officer_verdict === 'Verified Genuine') {
+    return { id: 'genuine', label: 'Human-verified genuine', className: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
+  }
+  if (grievance.officer_verdict === 'Confirmed Fake') {
+    return { id: 'fake', label: 'Human-confirmed fake', className: 'text-rose-700 bg-rose-50 border-rose-200' };
+  }
+  if (grievance.officer_verdict === 'Under Field Investigation') {
+    return { id: 'field', label: 'Field check requested', className: 'text-amber-900 bg-amber-100 border-amber-300' };
+  }
+  return { id: 'pending', label: 'Needs human review', className: 'text-blue-700 bg-blue-50 border-blue-200' };
 }
 
 function RiskMeter({ value, label, max = 100, isScore = false, invert = false }) {
@@ -339,8 +352,8 @@ function GrievanceWorkbench({ g, onReanalyze }) {
   );
 }
 
-export default function AIVerification({ grievances = [], onReanalyze, onVerify, onReanalyzeAll }) {
-  const [selectedId, setSelectedId] = useState(grievances[0]?.id || null);
+export default function AIVerification({ grievances = [], selectedGrievanceId = null, onReanalyze, onVerify, onReanalyzeAll }) {
+  const [selectedId, setSelectedId] = useState(selectedGrievanceId || grievances[0]?.id || null);
   const [filterType, setFilterType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [districtFilter, setDistrictFilter] = useState('');
@@ -349,6 +362,10 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
   const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [isBatchAuditing, setIsBatchAuditing] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState(null);
+
+  useEffect(() => {
+    if (selectedGrievanceId) setSelectedId(selectedGrievanceId);
+  }, [selectedGrievanceId]);
 
   // Selected grievance object
   const activeGrievance = useMemo(() => {
@@ -367,14 +384,10 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
   // Filtered grievances list
   const filteredGrievances = useMemo(() => {
     return grievances.filter(g => {
-      const isSusp = g.authenticity_flag !== 'Likely Genuine Grievance';
-      const isConfirmedFake = g.officer_verdict === 'Confirmed Fake';
-      const isVerifiedGenuine = g.officer_verdict === 'Verified Genuine';
-
-      if (filterType === 'suspicious' && !isSusp) return false;
-      if (filterType === 'genuine' && isSusp) return false;
-      if (filterType === 'confirmed-fake' && !isConfirmedFake) return false;
-      if (filterType === 'officer-verified' && !isVerifiedGenuine) return false;
+      const state = getReviewState(g);
+      if (filterType === 'pending' && state.id !== 'pending') return false;
+      if (filterType === 'field' && state.id !== 'field') return false;
+      if (filterType === 'decided' && !['genuine', 'fake'].includes(state.id)) return false;
 
       if (districtFilter && g.location_tagged !== districtFilter) return false;
 
@@ -390,9 +403,9 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
 
   // Statistics counters
   const totalCount = grievances.length;
-  const suspCount = grievances.filter(g => g.authenticity_flag !== 'Likely Genuine Grievance').length;
-  const genuineCount = totalCount - suspCount;
-  const officerVerifiedCount = grievances.filter(g => g.officer_verdict).length;
+  const pendingReviewCount = grievances.filter(g => getReviewState(g).id === 'pending').length;
+  const fieldCheckCount = grievances.filter(g => getReviewState(g).id === 'field').length;
+  const officerDecisionCount = grievances.filter(g => ['genuine', 'fake'].includes(getReviewState(g).id)).length;
 
   const showToast = (type, message) => {
     setFeedbackMsg({ type, message });
@@ -428,7 +441,7 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
       if (onReanalyze) {
         await onReanalyze(activeGrievance);
       }
-      showToast('success', `AI Forensic audit updated using active Gemini model.`);
+      showToast('success', 'AI analysis refreshed. Review the signals; this does not verify the report.');
     } catch (err) {
       showToast('error', `AI Re-analysis error: ${err.message}`);
     } finally {
@@ -451,9 +464,9 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
     }
   };
 
-  // Export CSV of flagged fake campaigns
+  // Export reports that a human reviewer confirmed as fake.
   const handleExportCSV = () => {
-    const flagged = grievances.filter(g => g.authenticity_flag !== 'Likely Genuine Grievance');
+    const flagged = grievances.filter(g => getReviewState(g).id === 'fake');
     const header = ['ID', 'Platform', 'Author', 'Location', 'Department', 'Severity', 'RiskScore', 'OfficerVerdict', 'PostText'];
     const rows = flagged.map(g => [
       g.id,
@@ -471,18 +484,34 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `CyberCell_Flagged_Campaigns_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `CyberCell_Human_Confirmed_Fake_Reports_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('success', `Exported ${flagged.length} flagged reports to CSV.`);
+    showToast('success', `Exported ${flagged.length} human-confirmed fake reports to CSV.`);
   };
 
-  const isSuspicious = activeGrievance?.authenticity_flag !== 'Likely Genuine Grievance';
-  const isConfirmedFake = activeGrievance?.officer_verdict === 'Confirmed Fake';
-  const isVerifiedGenuine = activeGrievance?.officer_verdict === 'Verified Genuine';
+  const activeReviewState = activeGrievance ? getReviewState(activeGrievance) : null;
+  const isConfirmedFake = activeReviewState?.id === 'fake';
+  const isVerifiedGenuine = activeReviewState?.id === 'genuine';
+  const isFieldCheckRequested = activeReviewState?.id === 'field';
+  const isPendingReview = activeReviewState?.id === 'pending';
   const platformCfg = activeGrievance ? getPlatformCfg(activeGrievance.platform) : null;
   const PlatformIcon = platformCfg?.icon || Radio;
+  const duplicateSiblings = activeGrievance?.duplicate_cluster_id
+    ? grievances.filter((g) => g.duplicate_cluster_id === activeGrievance.duplicate_cluster_id && g.id !== activeGrievance.id)
+    : [];
+  const hasMedia = Boolean(activeGrievance?.image_url || activeGrievance?.image_ocr_text);
+  const mediaCheck = !hasMedia
+    ? 'No image or OCR text attached'
+    : activeGrievance.media_analysis_status === 'completed'
+      ? 'Media analysis completed'
+      : activeGrievance.media_analysis_status === 'unavailable'
+        ? 'Media analysis unavailable'
+        : 'Media attached; analysis not recorded';
+  const textAnalysisLabel = activeGrievance?.analysis_mode
+    ? `Analysis recorded · ${activeGrievance.analysis_mode}`
+    : 'No text analysis recorded';
 
   return (
     <div className="flex flex-col gap-4 pb-12">
@@ -492,14 +521,14 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
               <ShieldAlert className="text-blue-600" size={22} />
-              AI Forensic & Authenticity Verification
+              AI Triage & Human Review
             </h1>
             <span className="badge bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
               Live Engine Active
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Bihar Cyber Crime & Disinformation Monitoring Unit · Multimodal Fake News & Coordinated Campaign Detection
+            Review AI-generated signals, inspect the source, then record a human decision.
           </p>
         </div>
 
@@ -507,10 +536,14 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
           <button
             onClick={handleBatchAudit}
             disabled={isBatchAuditing || totalCount === 0}
-            className="btn-secondary text-xs flex items-center gap-1.5 disabled:opacity-50"
+            className="text-xs font-bold text-zinc-950 bg-amber-500 hover:bg-amber-400 rounded-lg px-3.5 py-2 shadow-sm transition-all disabled:opacity-50 inline-flex items-center gap-1.5"
           >
-            {isBatchAuditing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-            <span>{isBatchAuditing ? 'Auditing All...' : 'Batch Audit All (Gemini AI)'}</span>
+            {isBatchAuditing ? <Loader2 size={13} className="animate-spin" /> : (
+              <svg className="h-3.5 w-3.5 text-zinc-950" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+            <span>{isBatchAuditing ? 'Analyzing all reports...' : 'Re-analyze all with AI'}</span>
           </button>
 
           <button
@@ -519,7 +552,7 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
             className="btn-secondary text-xs flex items-center gap-1.5"
           >
             <Download size={13} />
-            <span>Export Cyber Report (CSV)</span>
+            <span>Export confirmed fake reports</span>
           </button>
         </div>
       </div>
@@ -536,46 +569,128 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
         </div>
       )}
 
+      <section className="mb-2 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-3 flex items-center gap-2">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-600">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-slate-900">What happens here?</h2>
+            <p className="text-xs text-slate-500">
+              AI helps prioritize reports; it cannot prove that a report is true or fake. Check the original source before recording a decision.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 border-t border-slate-100 pt-3 md:grid-cols-3">
+          {[
+            ['1', 'Choose a report', 'Start with reports waiting for review.'],
+            ['2', 'Check the evidence', 'Read the post and open its source when available.'],
+            ['3', 'Record your decision', 'Verify, confirm fake, or request a field check. Add a note.'],
+          ].map(([step, title, description]) => (
+            <div key={step} className="flex items-start gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-zinc-800 bg-zinc-950 text-xs font-extrabold text-amber-400 shadow-sm">{step}</span>
+              <div>
+                <div className="text-xs font-semibold text-slate-800">{title}</div>
+                <div className="mt-0.5 text-[11px] leading-relaxed text-slate-500">{description}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {activeGrievance && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Active review target</p>
+              <h2 className="mt-1 break-words text-sm font-bold text-slate-900">
+                {activeGrievance.id} <span className="font-normal text-slate-500">— {activeGrievance.location_tagged || 'Location unverified'}</span>
+              </h2>
+              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-slate-600">{activeGrievance.post_text}</p>
+            </div>
+            <span className={`inline-flex shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${activeReviewState.className}`}>
+              {activeReviewState.label}
+            </span>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Department suggested by AI</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{activeGrievance.department || 'Not assigned'}</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">Classification suggestion only; no department dispatch is triggered here.</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Current case lifecycle</p>
+              <p className="mt-1 text-sm font-semibold text-blue-700">{activeGrievance.status || 'Status not recorded'}</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">This is the grievance status, separate from the human authenticity review.</p>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Review checks</h3>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3">
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-xs font-semibold text-slate-800">Text triage</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-600">{textAnalysisLabel}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-xs font-semibold text-slate-800">Image / OCR evidence</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-600">{mediaCheck}</p>
+                {activeGrievance.media_observation && (
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">{activeGrievance.media_observation}</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-slate-200 p-3">
+                <p className="text-xs font-semibold text-slate-800">Duplicate cross-check</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
+                  {activeGrievance.duplicate_cluster_id
+                    ? `${duplicateSiblings.length + 1} reports linked in ${activeGrievance.duplicate_cluster_id}`
+                    : 'No duplicate cluster is currently recorded'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ── KPI Metrics Grid ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="kpi-card bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 text-xs font-medium mb-1">
-            <span>Total Evaluated</span>
+            <span>Total reports</span>
             <Brain size={14} className="text-blue-600" />
           </div>
           <div className="text-2xl font-bold font-mono text-slate-900">{totalCount}</div>
-          <div className="text-[11px] text-slate-400 mt-1">Multi-source citizen posts</div>
+          <div className="text-[11px] text-slate-400 mt-1">In this review queue</div>
         </div>
 
         <div className="kpi-card bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 text-xs font-medium mb-1">
-            <span>Verified Genuine</span>
-            <ShieldCheck size={14} className="text-emerald-600" />
+            <span>Needs review</span>
+            <Eye size={14} className="text-blue-600" />
           </div>
-          <div className="text-2xl font-bold font-mono text-emerald-600">{genuineCount}</div>
-          <div className="text-[11px] text-emerald-700 font-medium mt-1">
-            {totalCount ? Math.round((genuineCount / totalCount) * 100) : 0}% authentic civic issues
-          </div>
+          <div className="text-2xl font-bold font-mono text-blue-600">{pendingReviewCount}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">No human decision yet</div>
         </div>
 
         <div className="kpi-card bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 text-xs font-medium mb-1">
-            <span>Flagged Suspicious</span>
-            <ShieldAlert size={14} className="text-rose-600" />
+            <span>Field checks</span>
+            <MapPin size={14} className="text-amber-600" />
           </div>
-          <div className="text-2xl font-bold font-mono text-rose-600">{suspCount}</div>
-          <div className="text-[11px] text-rose-700 font-medium mt-1">
-            {totalCount ? Math.round((suspCount / totalCount) * 100) : 0}% potential disinformation
-          </div>
+          <div className="text-2xl font-bold font-mono text-amber-600">{fieldCheckCount}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">Marked for follow-up</div>
         </div>
 
         <div className="kpi-card bg-white border border-slate-200 rounded-xl p-3.5 shadow-sm">
           <div className="flex items-center justify-between text-slate-500 text-xs font-medium mb-1">
-            <span>Officer Decisions</span>
+            <span>Human decisions</span>
             <CheckCircle2 size={14} className="text-violet-600" />
           </div>
-          <div className="text-2xl font-bold font-mono text-violet-600">{officerVerifiedCount}</div>
-          <div className="text-[11px] text-violet-700 font-medium mt-1">Human-in-the-loop audited</div>
+          <div className="text-2xl font-bold font-mono text-violet-600">{officerDecisionCount}</div>
+          <div className="text-[11px] text-slate-500 font-medium mt-1">Genuine or fake recorded</div>
         </div>
       </div>
 
@@ -583,18 +698,20 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
       <div className="card p-3 flex flex-col sm:flex-row items-center justify-between gap-3 bg-white border border-slate-200 shadow-sm">
         <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
           {[
-            { id: 'all', label: `All Reports (${totalCount})` },
-            { id: 'suspicious', label: `⚠ Suspicious (${suspCount})` },
-            { id: 'genuine', label: `✅ Genuine (${genuineCount})` },
-            { id: 'officer-verified', label: `🛡️ Verified (${officerVerifiedCount})` },
+            { id: 'all', label: `All (${totalCount})` },
+            { id: 'pending', label: `Needs review (${pendingReviewCount})` },
+            { id: 'field', label: `Field check (${fieldCheckCount})` },
+            { id: 'decided', label: `Human decisions (${officerDecisionCount})` },
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setFilterType(tab.id)}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
+              className={`text-xs px-3.5 py-1.5 rounded-lg border transition-all ${
                 filterType === tab.id
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? tab.id === 'field'
+                    ? 'bg-amber-500 text-zinc-950 border-amber-500 font-bold shadow-sm hover:bg-amber-400'
+                    : 'bg-zinc-950 text-amber-400 border-zinc-800 font-semibold shadow-sm'
+                  : 'bg-slate-100 text-slate-600 border-slate-200 font-medium hover:bg-slate-200'
               }`}
             >
               {tab.label}
@@ -644,7 +761,7 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
             ) : (
               filteredGrievances.map(g => {
                 const isSelected = g.id === activeGrievance?.id;
-                const isItemSusp = g.authenticity_flag !== 'Likely Genuine Grievance';
+                const reviewState = getReviewState(g);
                 const pCfg = getPlatformCfg(g.platform);
                 const PIcon = pCfg.icon;
 
@@ -654,7 +771,7 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                     onClick={() => setSelectedId(g.id)}
                     className={`card p-3 cursor-pointer transition-all border text-left flex flex-col gap-2 ${
                       isSelected
-                        ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20'
+                        ? 'border-2 border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/40'
                         : 'hover:border-slate-300 bg-white'
                     }`}
                   >
@@ -679,22 +796,16 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
 
                     <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
                       <div className="flex items-center gap-2">
-                        <span className={`font-bold ${isItemSusp ? 'text-rose-600' : 'text-emerald-600'}`}>
-                          {isItemSusp ? `⚠ Risk ${g.authenticity_risk_score}%` : `✅ Authentic`}
+                        <span className={`badge border px-2 py-0.5 text-[10px] font-semibold ${reviewState.className}`}>
+                          {reviewState.label}
                         </span>
                         <span className="text-slate-300">·</span>
                         <span className="text-slate-500 truncate max-w-[120px]">{g.location_tagged}</span>
                       </div>
 
-                      {g.officer_verdict ? (
-                        <span className="badge bg-violet-50 text-violet-700 border border-violet-200 text-[10px] font-bold">
-                          {g.officer_verdict}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-mono text-slate-400">
-                          SEV {g.severity_score}/10
-                        </span>
-                      )}
+                      <span className="text-[10px] font-mono text-slate-500">
+                        AI risk {g.authenticity_risk_score ?? '—'}% · Sev {g.severity_score ?? '—'}/10
+                      </span>
                     </div>
                   </div>
                 );
@@ -717,30 +828,32 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                   ? 'bg-rose-50 border-rose-200'
                   : isVerifiedGenuine
                   ? 'bg-emerald-50 border-emerald-200'
-                  : isSuspicious
+                  : isFieldCheckRequested
                   ? 'bg-amber-50 border-amber-200'
-                  : 'bg-emerald-50/60 border-emerald-100'
+                  : 'bg-blue-50 border-blue-200'
               }`}>
                 <div className="flex items-start gap-3">
                   {isConfirmedFake ? (
                     <ShieldX size={24} className="text-rose-600 shrink-0 mt-0.5" />
-                  ) : isSuspicious ? (
+                  ) : isFieldCheckRequested ? (
                     <ShieldAlert size={24} className="text-amber-600 shrink-0 mt-0.5" />
-                  ) : (
+                  ) : isVerifiedGenuine ? (
                     <ShieldCheck size={24} className="text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <Eye size={24} className="text-blue-600 shrink-0 mt-0.5" />
                   )}
 
                   <div>
                     <div className="text-sm font-bold" style={{
-                      color: isConfirmedFake ? '#be123c' : isSuspicious ? '#b45309' : '#15803d'
+                      color: isConfirmedFake ? '#be123c' : isFieldCheckRequested ? '#b45309' : isVerifiedGenuine ? '#15803d' : '#1d4ed8'
                     }}>
                       {isConfirmedFake
-                        ? '🚨 CONFIRMED FAKE / CO-ORDINATED DEFAMATION'
+                        ? 'Human decision: confirmed fake'
                         : isVerifiedGenuine
-                        ? '✅ VERIFIED GENUINE CITIZEN GRIEVANCE'
-                        : isSuspicious
-                        ? '⚠ SUSPICIOUS PATTERN / POTENTIAL MISINFORMATION'
-                        : '✅ LIKELY GENUINE PUBLIC COMPLAINT'}
+                        ? 'Human decision: verified genuine'
+                        : isFieldCheckRequested
+                        ? 'Field check requested'
+                        : 'Waiting for human review'}
                     </div>
                     <div className="text-xs text-slate-500 font-mono mt-0.5 flex items-center gap-2">
                       <span>ID: {activeGrievance.id}</span>
@@ -749,6 +862,11 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                       <span>·</span>
                       <span>{formatDateTime(activeGrievance.timestamp)}</span>
                     </div>
+                    {isPendingReview && (
+                      <p className="mt-1 text-xs text-blue-800">
+                        AI risk is a triage signal only; no reviewer has verified this report yet.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -768,10 +886,10 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                   <button
                     onClick={handleSingleReanalyze}
                     disabled={isReanalyzing}
-                    className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
+                    className="text-xs font-bold text-zinc-950 bg-amber-500 hover:bg-amber-400 rounded-md shadow-sm transition-all py-1.5 px-3 flex items-center gap-1.5 disabled:opacity-60"
                   >
                     {isReanalyzing ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                    <span>{isReanalyzing ? 'Auditing...' : 'Re-run Gemini AI'}</span>
+                    <span>{isReanalyzing ? 'Analyzing...' : 'Re-analyze with AI'}</span>
                   </button>
                 </div>
               </div>
@@ -782,7 +900,7 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
                       <CheckCircle2 size={13} className="text-blue-600" />
-                      Officer Human-in-the-Loop Verdict
+                      Human review decision
                     </span>
                     {activeGrievance.officer_verdict && (
                       <span className="badge bg-violet-100 text-violet-800 border border-violet-200 text-xs font-bold">
@@ -790,6 +908,10 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                       </span>
                     )}
                   </div>
+
+                  <p className="text-xs leading-relaxed text-slate-600">
+                    AI analysis is not a verdict. Review the source and evidence first. Add a short note explaining the basis for your decision.
+                  </p>
 
                   {activeGrievance.officer_notes && (
                     <div className="bg-white border border-slate-200 rounded-lg p-2.5 text-xs text-slate-700 italic">
@@ -801,7 +923,7 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                   <div className="flex flex-col sm:flex-row gap-2 items-center">
                     <input
                       type="text"
-                      placeholder="Enter verification notes (e.g. Field team verified site at Kankarbagh Patna)..."
+                      placeholder="Review note (e.g. source checked, site visit completed)..."
                       value={officerNote}
                       onChange={e => setOfficerNote(e.target.value)}
                       className="input-field text-xs py-1.5 flex-1"
@@ -811,7 +933,7 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                       <button
                         onClick={() => handleOfficerVerdict('Verified Genuine')}
                         disabled={isVerifying}
-                        className="btn-secondary text-xs py-1.5 px-2.5 flex-1 sm:flex-initial text-emerald-700 border-emerald-300 hover:bg-emerald-50 font-semibold"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"
                       >
                         <Check size={13} />
                         <span>Verify Genuine</span>
@@ -820,7 +942,7 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                       <button
                         onClick={() => handleOfficerVerdict('Confirmed Fake')}
                         disabled={isVerifying}
-                        className="btn-secondary text-xs py-1.5 px-2.5 flex-1 sm:flex-initial text-rose-700 border-rose-300 hover:bg-rose-50 font-semibold"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white shadow-sm transition-all hover:bg-rose-600 disabled:cursor-wait disabled:opacity-60"
                       >
                         <AlertOctagon size={13} />
                         <span>Confirm Fake</span>
@@ -829,20 +951,28 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                       <button
                         onClick={() => handleOfficerVerdict('Under Field Investigation')}
                         disabled={isVerifying}
-                        className="btn-secondary text-xs py-1.5 px-2.5 flex-1 sm:flex-initial text-amber-700 border-amber-300 hover:bg-amber-50 font-semibold"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-zinc-950 shadow-md transition-all hover:bg-amber-400 hover:shadow-amber-500/20 active:scale-95 disabled:cursor-wait disabled:opacity-60"
                       >
                         <Clock size={13} />
-                        <span>Dispatch Field Check</span>
+                        <span>Request field check</span>
                       </button>
                     </div>
                   </div>
+                  <p className="text-[11px] text-slate-500">
+                    “Request field check” records a follow-up status in this dashboard; it does not dispatch a team automatically.
+                  </p>
                 </div>
 
                 {/* ── Triple Risk Meters ── */}
+                <div>
+                  <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-700">AI triage signals</h3>
+                  <p className="mb-2 text-[11px] text-slate-500">
+                    These model-generated indicators help prioritize review. They are not proof or a probability that the report is true or fake.
+                  </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <RiskMeter
                     value={activeGrievance.authenticity_risk_score || 15}
-                    label="Authenticity Risk %"
+                    label="AI authenticity-risk signal"
                   />
                   <SentimentOutrageMeter
                     score={activeGrievance.sentiment_score}
@@ -853,6 +983,7 @@ export default function AIVerification({ grievances = [], onReanalyze, onVerify,
                     label="Civic Severity Impact"
                     isScore={true}
                   />
+                </div>
                 </div>
 
                 {/* ── Post Content & Media Evidence ── */}

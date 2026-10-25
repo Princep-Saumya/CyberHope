@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Search, MapPin, Building2, Shield, RotateCcw, Hash, LayoutGrid, List, AlertTriangle, CheckCircle2, Copy, ExternalLink, Newspaper, Loader2, Radio } from 'lucide-react';
+import { Search, MapPin, Building2, Shield, RotateCcw, Hash, LayoutGrid, List, AlertTriangle, CheckCircle2, Copy, ExternalLink, Newspaper, Loader2, Radio, SlidersHorizontal } from 'lucide-react';
 import { formatDistanceToNow } from '../utils/dateUtils';
 import { api } from '../services/api';
 import { isFlaggedSuspicious, isUnverified, isVerifiedGenuine } from '../utils/verification';
@@ -100,20 +100,20 @@ function PublicSourceSearch({ onImportSourceItem }) {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div>
           <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-            <Radio size={15} className="text-blue-600" /> Public Source Search
+            <Radio size={15} className="text-amber-500" /> Public Source Search
           </div>
           <p className="text-xs text-slate-500 mt-1">
             Search live public coverage, news feeds, and citizen videos across Bihar. Analyze any item with Gemini AI to ingest it into official grievance tracking.
           </p>
         </div>
-        <details className="relative self-start md:self-auto md:min-w-52 rounded-lg border border-slate-200 bg-slate-50">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-semibold text-slate-700">
+        <details className="relative self-start md:self-auto md:min-w-52 rounded-lg border border-zinc-800 bg-zinc-900">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-semibold text-amber-400">
             <span className="flex items-center gap-2">
               <span className={`h-2 w-2 rounded-full ${selectedStatus?.configured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
               {selectedStatus?.configured ? 'Source connected' : 'Source status'}
             </span>
             {source === 'youtube' && selectedStatus?.configured && (
-              <span className="font-mono text-slate-600">{selectedStatus.searches_remaining}/{selectedStatus.daily_search_limit} left</span>
+              <span className="font-mono text-amber-200">{selectedStatus.searches_remaining}/{selectedStatus.daily_search_limit} left</span>
             )}
           </summary>
           <div className="absolute right-0 top-full z-20 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
@@ -174,7 +174,7 @@ function PublicSourceSearch({ onImportSourceItem }) {
           required
         />
         <button type="submit" disabled={searching || !sourceAvailable}
-          className="btn-primary justify-center whitespace-nowrap px-3 disabled:opacity-50">
+          className="justify-center whitespace-nowrap px-3 py-2 rounded-lg bg-amber-500 text-zinc-950 text-sm font-semibold hover:bg-amber-400 transition-colors inline-flex items-center gap-2 disabled:opacity-50">
           {searching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
           {searching ? 'Searching…' : 'Search source'}
         </button>
@@ -391,7 +391,7 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
       {/* Filter bar */}
       <div className="card p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Search size={14} className="text-blue-500" />
+          <SlidersHorizontal size={14} className="text-amber-500" />
           <span className="text-sm font-bold text-slate-800">Multi-Parameter OSINT Filter</span>
           {loading && (
             <span className="ml-auto flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">
@@ -401,30 +401,30 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <div className="relative">
-            <Hash size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Hash size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" />
             <input type="text" placeholder="#BPSC, #RCD_Bihar, #PatnaFloods"
               value={filters.hashtag} onChange={e => onFilterChange('hashtag', e.target.value)}
-              className="input-field pl-8" />
+              className="input-field pl-8 focus:border-amber-500 focus:ring-amber-500/20" />
           </div>
           <div className="relative">
-            <MapPin size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <MapPin size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" />
             <select value={filters.location} onChange={e => onFilterChange('location', e.target.value)}
-              className="select-field w-full pl-8">
+              className="select-field w-full pl-8 focus:border-amber-500 focus:ring-amber-500/20">
               {LOCATIONS.map(l => <option key={l} value={l}>{l || 'All Districts'}</option>)}
             </select>
           </div>
           <div className="relative">
-            <Building2 size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Building2 size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" />
             <select value={filters.department} onChange={e => onFilterChange('department', e.target.value)}
-              className="select-field w-full pl-8">
+              className="select-field w-full pl-8 focus:border-amber-500 focus:ring-amber-500/20">
               {DEPARTMENTS.map(d => <option key={d} value={d}>{d || 'All Departments'}</option>)}
             </select>
           </div>
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Shield size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Shield size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" />
               <select value={filters.authenticity} onChange={e => onFilterChange('authenticity', e.target.value)}
-                className="select-field w-full pl-8">
+                className="select-field w-full pl-8 focus:border-amber-500 focus:ring-amber-500/20">
                 <option value="">All Posts</option>
                 <option value="genuine">✅ Verified Genuine Only</option>
                 <option value="suspicious">⚠️ Flagged Only</option>
@@ -437,18 +437,18 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
 
         {/* Quick chips */}
         <div className="flex gap-2 mt-3 flex-wrap items-center">
-          <span className="text-xs text-slate-500 font-medium">Quick:</span>
+          <span className="text-xs text-slate-500 font-semibold">Quick Filters:</span>
           {['#BPSC','#PatnaFloods','#RCD_Bihar','#PowerOutage','#WaterCrisis'].map(tag => (
             <button key={tag}
               onClick={() => onFilterChange('hashtag', filters.hashtag === tag ? '' : tag)}
               className={`text-xs px-2.5 py-1 rounded-full border transition-all font-mono ${
                 filters.hashtag === tag
-                  ? 'bg-blue-600 border-blue-600 text-white'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-blue-50 hover:border-blue-200'
+                  ? 'bg-zinc-950 border-zinc-800 text-amber-400 shadow-sm'
+                  : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-zinc-900 hover:text-amber-400'
               }`}>{tag}</button>
           ))}
           <button onClick={() => onFilterChange('severity', filters.severity === '8' ? '' : '8')}
-            className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
+            className={`text-xs px-2.5 py-1 rounded-md border transition-all ${
               filters.severity === '8' ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-rose-50 hover:border-rose-200'
             }`}>🔴 Critical Only</button>
         </div>
@@ -465,7 +465,10 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
         <div className="flex gap-1">
           {[['table', List], ['grid', LayoutGrid]].map(([mode, Icon]) => (
             <button key={mode} onClick={() => setViewMode(mode)}
-              className={`p-1.5 rounded-lg border transition-all ${viewMode === mode ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-200 text-slate-400 hover:text-slate-700 bg-white'}`}>
+              title={mode === 'table' ? 'Table View' : 'Card Grid View'}
+              aria-label={mode === 'table' ? 'Table View' : 'Card Grid View'}
+              aria-pressed={viewMode === mode}
+              className={`p-1.5 rounded-md border transition-all ${viewMode === mode ? 'bg-zinc-950 text-amber-400 shadow-sm border-zinc-800' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 border-transparent'}`}>
               <Icon size={15} />
             </button>
           ))}

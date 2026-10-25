@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import {
   X, Brain, MapPin, Building2, User, Calendar,
   AlertTriangle, CheckCircle2, Copy, ChevronRight,
-  Loader2, Image as ImageIcon, ExternalLink
+  Loader2, Image as ImageIcon, ExternalLink, ShieldCheck
 } from 'lucide-react';
 import { formatDateTime } from '../utils/dateUtils';
 import { isFlaggedSuspicious, isUnverified } from '../utils/verification';
@@ -41,7 +41,7 @@ function RiskBar({ label, value, maxValue = 100 }) {
   );
 }
 
-export default function ResolutionModal({ grievance, clusterSiblings, onClose, onStatusUpdate, onReanalyze }) {
+export default function ResolutionModal({ grievance, clusterSiblings, onClose, onStatusUpdate, onReanalyze, onOpenAIReview }) {
   const [status, setStatus]               = useState(grievance.status);
   const [statusLoading, setStatusLoading] = useState(false);
   const [analyzeLoading, setAnalyzeLoading] = useState(false);
@@ -114,6 +114,14 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
             <h2 className="text-lg sm:text-xl font-semibold text-slate-900 truncate">{title}</h2>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => onOpenAIReview?.(grievance)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+            >
+              <ShieldCheck size={14} />
+              Review AI signals
+            </button>
             <span className={`px-3 py-1 rounded-full border text-xs font-semibold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
               {status}
             </span>
@@ -262,10 +270,10 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
             <button
               onClick={handleReanalyze}
               disabled={analyzeLoading}
-              className="btn-secondary w-full justify-center text-sm py-2.5 gap-2 border-blue-200 text-blue-800 hover:bg-blue-50 disabled:opacity-50"
+              className="w-full justify-center text-sm font-bold py-2.5 gap-2 text-zinc-950 bg-amber-500 hover:bg-amber-400 rounded-lg transition-colors inline-flex items-center disabled:opacity-50"
             >
               {analyzeLoading ? <Loader2 size={14} className="animate-spin" /> : <Brain size={14} />}
-              {analyzeLoading ? 'Analysing…' : 'Re-run text analysis'}
+              {analyzeLoading ? 'Analyzing…' : 'Re-analyze with AI'}
             </button>
 
             <div className="pt-1">
