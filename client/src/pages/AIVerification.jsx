@@ -1039,9 +1039,6 @@ export default function AIVerification({
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
             AI Verification Queue
           </h1>
-          <p className="text-xs text-slate-500 mt-1 max-w-xl leading-relaxed">
-            Scan incoming citizen reports in a clean list view. Click any card to open the complete forensic analysis and record an authoritative officer verdict.
-          </p>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap shrink-0">
