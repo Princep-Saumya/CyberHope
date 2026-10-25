@@ -68,7 +68,11 @@ function initStore() {
 
   grievanceStore = database.prepare('SELECT record_json FROM grievances').all().map(row => {
     try {
-      return JSON.parse(row.record_json);
+      const record = JSON.parse(row.record_json);
+      if (Array.isArray(record.coordinates) && record.coordinates.length >= 2) {
+        record.coordinates = { lat: record.coordinates[0], lng: record.coordinates[1] };
+      }
+      return record;
     } catch (error) {
       throw new Error(`Could not load a grievance record from SQLite: ${error.message}`);
     }
@@ -85,7 +89,7 @@ function initStore() {
         image_url: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=600&auto=format&fit=crop&q=80',
         image_ocr_text: '',
         location_tagged: 'Patna',
-        coordinates: [25.5941, 85.1376],
+        coordinates: { lat: 25.5941, lng: 85.1376 },
         coordinates_approximate: false,
         hashtags: ['#BiharRoadProblem', '#Patna'],
         department: 'Road Construction Department (RCD)',
@@ -116,7 +120,7 @@ function initStore() {
         image_url: null,
         image_ocr_text: '',
         location_tagged: 'Muzaffarpur',
-        coordinates: [26.1209, 85.3647],
+        coordinates: { lat: 26.1209, lng: 85.3647 },
         coordinates_approximate: false,
         hashtags: ['#PowerCutBihar', '#BSPHCL'],
         department: 'Bihar State Power Holding Company Ltd (BSPHCL)',

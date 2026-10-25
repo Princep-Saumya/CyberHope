@@ -92,9 +92,22 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
   const summary = analysisResult?.summary || grievance.ai_summary;
   const sourceLabel = grievance.category || grievance.platform || 'Public Grievance';
   const title = `${grievance.category || 'Public Grievance'} — ${grievance.location_tagged || 'Location unverified'}`;
-  const locationText = grievance.coordinates
-    ? `${grievance.location_tagged}${grievance.coordinates_approximate ? ' (approx.)' : ''} (${grievance.coordinates.lat.toFixed(3)}, ${grievance.coordinates.lng.toFixed(3)})`
-    : grievance.location_tagged;
+  const getCoordinatesText = () => {
+    if (!grievance.coordinates) return '';
+    let lat, lng;
+    if (Array.isArray(grievance.coordinates)) {
+      lat = grievance.coordinates[0];
+      lng = grievance.coordinates[1];
+    } else if (typeof grievance.coordinates === 'object') {
+      lat = grievance.coordinates.lat;
+      lng = grievance.coordinates.lng;
+    }
+    if (typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng)) {
+      return ` (${lat.toFixed(3)}, ${lng.toFixed(3)})`;
+    }
+    return '';
+  };
+  const locationText = `${grievance.location_tagged || 'Location unverified'}${grievance.coordinates_approximate ? ' (approx.)' : ''}${getCoordinatesText()}`;
 
   const modal = (
     <div
