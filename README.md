@@ -265,6 +265,14 @@ npm run build
 | `PORT` | `3001` | ❌ No | Express server port |
 | `NODE_ENV` | `development` | ❌ No | Set to `production` for prod builds |
 
+### Local demo sign-in
+
+The client uses local sample accounts only; Supabase authentication and credentials are not required. Select one of the listed demo profiles to fill the sign-in form, then submit to enter the dashboard. Sign out returns to the login screen. The profile names and roles are fictional demo labels, not verified identities. This client-side demo sign-in is not real authentication, does not protect the Express API, and must not be used as an access-control or production security boundary.
+
+The dashboard header has a responsive profile popup containing the demo profile, department filter, and sign-out. Department selection filters grievance records across the app; it changes displayed data only and does not grant or verify departmental authorization.
+
+Demo credentials are hard-coded client-side for demonstration. Do not reuse passwords or enable these accounts for any real service.
+
 ---
 
 ## API Endpoints

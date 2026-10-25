@@ -10,6 +10,8 @@ client/dist
 # Environment files
 .env
 client/.env
+client/.env.local
+client/.env.*.local
 server/.env
 server/.provider-quotas.json
 server/.provider-quotas.json.tmp

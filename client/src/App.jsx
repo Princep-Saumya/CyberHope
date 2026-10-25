@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import LoginPage from './pages/LoginPage';
 import ResolutionModal from './components/ResolutionModal';
 import ExecutiveDashboard from './pages/ExecutiveDashboard';
 import OSINTSearch from './pages/OSINTSearch';
@@ -8,9 +9,26 @@ import ClusteringEngine from './pages/ClusteringEngine';
 import AIVerification from './pages/AIVerification';
 import ResolutionPortal from './pages/ResolutionPortal';
 import { useGrievances } from './hooks/useGrievances';
+import { useAuth } from './context/AuthContext';
 import { X, ExternalLink, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
+  const { loading, isAuthenticated } = useAuth();
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-50 flex items-center justify-center text-sm font-medium text-slate-600">
+        Checking your session…
+      </main>
+    );
+  }
+
+  if (!isAuthenticated) return <LoginPage />;
+  return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
+  const { demoMode, demoProfile, signOut } = useAuth();
   const [activePage, setActivePage]     = useState('dashboard');
   const [selectedVerificationId, setSelectedVerificationId] = useState(null);
   const [globalSearch, setGlobalSearch] = useState('');
@@ -204,6 +222,12 @@ export default function App() {
           onPollRealtime={handlePollRealtime}
           pollingRealtime={pollingRealtime}
           pollDisabled={pollingRealtime || pollCooldown}
+          userEmail={demoProfile?.email}
+          demoMode={demoMode}
+          demoProfile={demoProfile}
+          onSignOut={signOut}
+          selectedDepartment={filters.department}
+          onDepartmentChange={(department) => updateFilter('department', department)}
         />
 
         {/* ── Error Banner ── */}
