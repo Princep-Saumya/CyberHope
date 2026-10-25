@@ -1,0 +1,11 @@
+{
+  "name": "cyber-workspace",
+  "version": "1.0.0",
+  "description": "Root workspace proxy for GrievancePulse AI",
+  "scripts": {
+    "dev": "npm run dev --prefix cyberhope",
+    "start": "npm run dev --prefix cyberhope",
+    "install:all": "npm run install:all --prefix cyberhope",
+    "build": "npm run build --prefix cyberhope"
+  }
+}
