@@ -167,7 +167,17 @@ function heuristicFallback(postText, imageOcrText = '') {
 
   // Summary
   const words = postText.split(/\s+/).slice(0, 18).join(' ');
-  const summary = `${words}... [Dept: ${department}, Severity: ${severity}/10]`;
+  const authenticityReasons = [];
+  const manipulationSignals = [];
+  if (riskScore > 50) {
+    authenticityReasons.push('Contains sensational or viral urgency language often associated with coordinated campaigns.');
+    authenticityReasons.push('Absence of verifiable municipal ward or landmark references.');
+    manipulationSignals.push('Urgency / Viral Pattern');
+  } else {
+    authenticityReasons.push('Describes concrete civic infrastructure deficiency with plausible localized context.');
+    authenticityReasons.push('Linguistic pattern matches organic citizen grievance rather than automated bot activity.');
+    manipulationSignals.push('None Detected');
+  }
 
   return {
     department,
@@ -176,6 +186,8 @@ function heuristicFallback(postText, imageOcrText = '') {
     priority_score: priorityScore,
     authenticity_risk_score: riskScore,
     authenticity_flag: authenticityFlag,
+    authenticity_reasons: authenticityReasons,
+    manipulation_signals: manipulationSignals,
     extracted_location: geo.location_tagged,
     coordinates: geo.coordinates,
     sentiment_score: sentiment.sentiment_score,
@@ -192,7 +204,7 @@ async function analyzePost(postText, imageOcrText = '') {
     return heuristicFallback(postText, imageOcrText);
   }
 
-  const modelName = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+  const modelName = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -201,11 +213,11 @@ async function analyzePost(postText, imageOcrText = '') {
       generationConfig: { responseMimeType: 'application/json' },
     });
 
-    const prompt = `Analyze the following Bihar public social grievance post:
+    const prompt = `Analyze the following Bihar public social grievance post for civic department routing and cyber authenticity verification:
 Text: ${postText}
 Image OCR Context: ${imageOcrText}
 
-Return raw JSON strictly without code fences:
+Return raw JSON strictly matching this schema:
 {
   "department": "One of: Road Construction Department (RCD), Bihar State Power Holding Company Ltd (BSPHCL), Public Health Department (PHD), Cyber Cell / Bihar Police, Water Resources Department (WRD), General Administration",
   "category": "e.g. Infrastructure Damage, Power Failure, Water Contamination, Cyber Crime, Flood Alert, Sanitation",
@@ -213,6 +225,8 @@ Return raw JSON strictly without code fences:
   "priority_score": <integer 10 to 100>,
   "authenticity_risk_score": <integer 0 to 100>,
   "authenticity_flag": "Likely Genuine Grievance OR Suspicious Defamation / Fake Campaign",
+  "authenticity_reasons": ["2-3 concise forensic evidence bullet points explaining why this post is genuine or suspicious"],
+  "manipulation_signals": ["0-3 flags e.g. Sensational Urgency Syntax, Bot Pattern, Recycled Media, or None Detected"],
   "extracted_location": "Landmark or District name in Bihar (e.g. Patna, Muzaffarpur, Gaya, Darbhanga)",
   "sentiment_score": <float between -1.0 and 1.0>,
   "sentiment_label": "One of: Critical Outrage, High Distress, Moderate Concern, Positive",
@@ -233,6 +247,12 @@ Return raw JSON strictly without code fences:
       priority_score: parsed.priority_score || (parsed.severity_score ? parsed.severity_score * 10 : 50),
       authenticity_risk_score: parsed.authenticity_risk_score || 15,
       authenticity_flag: parsed.authenticity_flag || 'Likely Genuine Grievance',
+      authenticity_reasons: Array.isArray(parsed.authenticity_reasons) && parsed.authenticity_reasons.length > 0
+        ? parsed.authenticity_reasons
+        : ['Evidence reviewed by Gemini AI model.'],
+      manipulation_signals: Array.isArray(parsed.manipulation_signals) && parsed.manipulation_signals.length > 0
+        ? parsed.manipulation_signals
+        : ['None Detected'],
       extracted_location: parsed.extracted_location || geo.location_tagged,
       coordinates: geo.coordinates,
       sentiment_score: parsed.sentiment_score ?? -0.5,

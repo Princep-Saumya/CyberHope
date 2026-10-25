@@ -140,11 +140,55 @@ function updateGrievanceAnalysis(id, analysis) {
     severity_score: analysis.severity_score,
     authenticity_risk_score: analysis.authenticity_risk_score,
     authenticity_flag: analysis.authenticity_flag,
+    authenticity_reasons: analysis.authenticity_reasons || grievanceStore[idx].authenticity_reasons || [],
+    manipulation_signals: analysis.manipulation_signals || grievanceStore[idx].manipulation_signals || [],
     sentiment_score: analysis.sentiment_score ?? grievanceStore[idx].sentiment_score,
     sentiment_label: analysis.sentiment_label ?? grievanceStore[idx].sentiment_label,
     ai_summary: analysis.summary,
     analysis_mode: analysis.analysis_mode,
     ai_analyzed_at: new Date().toISOString(),
+  };
+
+  return grievanceStore[idx];
+}
+
+function recordVerification(id, { verdict, notes = '', officer_id = 'CyberCell_Officer_01' }) {
+  const idx = grievanceStore.findIndex(g => g.id === id);
+  if (idx === -1) return null;
+
+  const timestamp = new Date().toISOString();
+  const current = grievanceStore[idx];
+
+  let newFlag = current.authenticity_flag;
+  let newRisk = current.authenticity_risk_score;
+
+  if (verdict === 'Verified Genuine') {
+    newFlag = 'Likely Genuine Grievance';
+    newRisk = Math.min(newRisk || 15, 20);
+  } else if (verdict === 'Confirmed Fake') {
+    newFlag = 'Suspicious Defamation / Fake Campaign';
+    newRisk = Math.max(newRisk || 85, 90);
+  } else if (verdict === 'Under Field Investigation') {
+    newFlag = 'Under Cyber Cell Review';
+  }
+
+  const auditEntry = {
+    action: 'officer_verification',
+    verdict,
+    notes: notes.trim(),
+    officer_id,
+    timestamp,
+  };
+
+  grievanceStore[idx] = {
+    ...current,
+    authenticity_flag: newFlag,
+    authenticity_risk_score: newRisk,
+    officer_verdict: verdict,
+    officer_notes: notes.trim(),
+    verified_at: timestamp,
+    verified_by: officer_id,
+    audit_log: [...(current.audit_log || []), auditEntry],
   };
 
   return grievanceStore[idx];
@@ -206,5 +250,6 @@ module.exports = {
   updateGrievanceStatus,
   recordAcknowledgment,
   updateGrievanceAnalysis,
+  recordVerification,
   calcStats,
 };

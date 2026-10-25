@@ -89,6 +89,17 @@ export const api = {
   escalateGrievance: (id) =>
     request(`/grievances/${id}/escalate`, { method: 'PATCH' }),
 
+  // POST /api/grievances/:id/verify — human-in-the-loop verification
+  verifyGrievance: (id, { verdict, notes, officer_id }) =>
+    request(`/grievances/${id}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ verdict, notes, officer_id }),
+    }),
+
+  // POST /api/realtime/reanalyze-all — batch AI re-analysis
+  reanalyzeAllGrievances: () =>
+    request('/realtime/reanalyze-all', { method: 'POST' }),
+
   // Real-Time Poller Endpoints
   getRealTimeStatus: () => request('/realtime/status'),
   triggerPollNow: () => request('/realtime/poll-now', { method: 'POST' }),

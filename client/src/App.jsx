@@ -20,7 +20,7 @@ export default function App() {
     grievances, stats, clusters,
     loading, error,
     selectedGrievance, setSelectedGrievance,
-    updateGrievanceStatus, escalateGrievance, addSampleReport, importPublicSourceItem, reanalyzeGrievance,
+    updateGrievanceStatus, escalateGrievance, verifyGrievance, reanalyzeAllGrievances, addSampleReport, importPublicSourceItem, reanalyzeGrievance,
     getClusterSiblings,
     isSocketConnected,
     realtimeNotification,
@@ -120,7 +120,14 @@ export default function App() {
       case 'clusters':
         return <ClusteringEngine clusters={clusters} grievances={grievances} onSelectGrievance={setSelectedGrievance} />;
       case 'ai':
-        return <AIVerification grievances={grievances} onReanalyze={reanalyzeGrievance} />;
+        return (
+          <AIVerification
+            grievances={grievances}
+            onReanalyze={reanalyzeGrievance}
+            onVerify={verifyGrievance}
+            onReanalyzeAll={reanalyzeAllGrievances}
+          />
+        );
       case 'resolution':
         return <ResolutionPortal grievances={grievances} onUpdateStatus={updateGrievanceStatus} onEscalate={escalateGrievance} />;
       default:

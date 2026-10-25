@@ -17,6 +17,7 @@ const {
   updateGrievanceStatus,
   recordAcknowledgment,
   updateGrievanceAnalysis,
+  recordVerification,
   calcStats,
 } = require('../services/storeService');
 const { getPollerStatus, triggerManualPoll } = require('../services/realTimePoller');
@@ -42,6 +43,34 @@ router.post('/realtime/clear', (req, res) => {
     req.io.emit('store_cleared', { stats: calcStats() });
   }
   res.json({ success: true, message: 'All demo and existing records deleted. Store is completely clean.' });
+});
+
+router.post('/realtime/reanalyze-all', async (req, res) => {
+  try {
+    const records = getStore();
+    const results = [];
+    for (const g of records) {
+      try {
+        const analysis = await analyzePost(g.post_text, g.image_ocr_text || '');
+        const updated = updateGrievanceAnalysis(g.id, analysis);
+        if (updated) results.push(updated);
+      } catch (err) {
+        console.warn(`[BatchAudit] Failed for ${g.id}:`, err.message);
+      }
+    }
+    const updatedStats = calcStats();
+    if (req.io) {
+      req.io.emit('stats_updated', { stats: updatedStats });
+    }
+    res.json({
+      success: true,
+      reanalyzed_count: results.length,
+      total: records.length,
+      stats: updatedStats,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── Grievance CRUD Endpoints ─────────────────────────────────────────────────
@@ -263,6 +292,21 @@ router.patch('/grievances/:id/escalate', (req, res) => {
 
   const updated = updateGrievanceStatus(req.params.id, 'Escalated to DM');
   res.json({ success: true, record: updated });
+});
+
+// POST /api/grievances/:id/verify — officer human-in-the-loop verification verdict
+router.post('/grievances/:id/verify', (req, res) => {
+  const { verdict, notes, officer_id } = req.body;
+  if (!verdict) return res.status(400).json({ error: 'verdict is required' });
+
+  const record = recordVerification(req.params.id, { verdict, notes, officer_id });
+  if (!record) return res.status(404).json({ error: 'Grievance not found' });
+
+  if (req.io) {
+    req.io.emit('grievance_verified', { record, stats: calcStats() });
+  }
+
+  res.json({ success: true, record });
 });
 
 module.exports = router;
