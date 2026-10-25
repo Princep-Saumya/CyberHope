@@ -200,7 +200,7 @@ const BIHAR_REDDIT_SEED_POOL = [
     author: 'u/patna_resident_99',
     subreddit: 'r/bihar',
     published_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-    url: 'https://www.reddit.com/r/bihar/comments/kankarbagh_road_condition/',
+    url: 'https://www.reddit.com/r/bihar/search/?q=kankarbagh+road&restrict_sr=1',
     thumbnail_url: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=600&auto=format&fit=crop&q=80',
   },
   {
@@ -211,7 +211,7 @@ const BIHAR_REDDIT_SEED_POOL = [
     author: 'u/bihar_youth_voice',
     subreddit: 'r/bihar',
     published_at: new Date(Date.now() - 3600000 * 5).toISOString(),
-    url: 'https://www.reddit.com/r/bihar/comments/muzaffarpur_blackout/',
+    url: 'https://www.reddit.com/r/bihar/search/?q=muzaffarpur+power&restrict_sr=1',
     thumbnail_url: null,
   },
   {
@@ -222,7 +222,7 @@ const BIHAR_REDDIT_SEED_POOL = [
     author: 'u/bihar_observer',
     subreddit: 'r/bihar',
     published_at: new Date(Date.now() - 3600000 * 8).toISOString(),
-    url: 'https://www.reddit.com/r/bihar/comments/rajendra_nagar_water_issue/',
+    url: 'https://www.reddit.com/r/bihar/search/?q=rajendra+nagar+water&restrict_sr=1',
     thumbnail_url: null,
   },
   {
@@ -233,7 +233,7 @@ const BIHAR_REDDIT_SEED_POOL = [
     author: 'u/kosi_sentinel',
     subreddit: 'r/bihar',
     published_at: new Date(Date.now() - 3600000 * 12).toISOString(),
-    url: 'https://www.reddit.com/r/bihar/comments/supaul_kosi_embankment/',
+    url: 'https://www.reddit.com/r/bihar/search/?q=supaul+kosi&restrict_sr=1',
     thumbnail_url: null,
   },
   {
@@ -244,7 +244,7 @@ const BIHAR_REDDIT_SEED_POOL = [
     author: 'u/mithila_first',
     subreddit: 'r/bihar',
     published_at: new Date(Date.now() - 3600000 * 16).toISOString(),
-    url: 'https://www.reddit.com/r/bihar/comments/dmch_medicines_shortage/',
+    url: 'https://www.reddit.com/r/bihar/search/?q=darbhanga+hospital&restrict_sr=1',
     thumbnail_url: null,
   },
 ];
