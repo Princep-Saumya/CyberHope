@@ -171,9 +171,6 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
               <div className="flex items-center gap-1.5">
                 <span className="text-lg font-black text-white tracking-tight leading-none">JanSuno</span>
                 <span className="text-lg font-black text-amber-400 leading-none">AI</span>
-                <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                  v2.4
-                </span>
               </div>
               <p className="text-xs text-slate-300 mt-1 font-medium tracking-wide truncate">
                 Govt. of Bihar · Cyber Cell

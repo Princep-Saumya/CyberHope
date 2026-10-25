@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "grievancepulse-ai": "file:..",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
     "lucide-react": "^0.441.0",
