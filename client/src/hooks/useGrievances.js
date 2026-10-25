@@ -222,6 +222,7 @@ export function useGrievances() {
           media_analysis_status: result.analysis.media_analysis_status ?? grievance.media_analysis_status,
           media_observation: result.analysis.media_observation ?? grievance.media_observation,
           media_analysis_mode: result.analysis.media_analysis_mode ?? grievance.media_analysis_mode,
+          image_ocr_text: result.analysis.image_ocr_text ?? imageOcrText,
         };
         setGrievances((prev) => prev.map((g) => (g.id === grievance.id ? updated : g)));
         setSelectedGrievance((prev) => (prev?.id === grievance.id ? updated : prev));
@@ -243,14 +244,27 @@ export function useGrievances() {
     [loadStats]
   );
 
-  const getClusterSiblings = useCallback(
-    (grievance) => {
-      if (!grievance?.duplicate_cluster_id) return [];
-      return grievances.filter(
-        (g) => g.duplicate_cluster_id === grievance.duplicate_cluster_id && g.id !== grievance.id
-      );
+  const verifyGrievance = useCallback(
+    async (id, payload) => {
+      const result = await api.verifyGrievance(id, payload);
+      if (result.record) {
+        setGrievances((prev) => prev.map((g) => (g.id === id ? result.record : g)));
+        setSelectedGrievance((prev) => (prev?.id === id ? result.record : prev));
+        loadStats();
+      }
+      return result;
     },
-    [grievances]
+    [loadStats]
+  );
+
+  const reanalyzeAllGrievances = useCallback(
+    async () => {
+      const result = await api.reanalyzeAllGrievances();
+      await fetchGrievancesList();
+      await loadStats();
+      return result;
+    },
+    [fetchGrievancesList, loadStats]
   );
 
   return {
@@ -266,6 +280,8 @@ export function useGrievances() {
     setSelectedGrievance,
     updateGrievanceStatus,
     escalateGrievance,
+    verifyGrievance,
+    reanalyzeAllGrievances,
     addSampleReport,
     importPublicSourceItem,
     reanalyzeGrievance,

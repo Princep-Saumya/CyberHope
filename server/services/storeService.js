@@ -218,6 +218,8 @@ function updateGrievanceAnalysis(id, analysis) {
     priority_score: analysis.priority_score,
     authenticity_risk_score: analysis.authenticity_risk_score,
     authenticity_flag: analysis.authenticity_flag,
+    authenticity_reasons: analysis.authenticity_reasons ?? existing.authenticity_reasons ?? [],
+    manipulation_signals: analysis.manipulation_signals ?? existing.manipulation_signals ?? [],
     location_tagged: analysis.extracted_location || existing.location_tagged,
     coordinates: analysis.coordinates ?? existing.coordinates,
     coordinates_approximate: analysis.coordinates_approximate ?? existing.coordinates_approximate,
@@ -235,6 +237,48 @@ function updateGrievanceAnalysis(id, analysis) {
   persistRecord(updatedRecord);
   grievanceStore[idx] = updatedRecord;
   return updatedRecord;
+}
+
+function recordVerification(id, { verdict, notes = '', officer_id = 'CyberCell_Officer_01' }) {
+  const idx = grievanceStore.findIndex(g => g.id === id);
+  if (idx === -1) return null;
+
+  const timestamp = new Date().toISOString();
+  const current = grievanceStore[idx];
+
+  let newFlag = current.authenticity_flag;
+  let newRisk = current.authenticity_risk_score;
+
+  if (verdict === 'Verified Genuine') {
+    newFlag = 'Likely Genuine Grievance';
+    newRisk = Math.min(newRisk || 15, 20);
+  } else if (verdict === 'Confirmed Fake') {
+    newFlag = 'Suspicious Defamation / Fake Campaign';
+    newRisk = Math.max(newRisk || 85, 90);
+  } else if (verdict === 'Under Field Investigation') {
+    newFlag = 'Under Cyber Cell Review';
+  }
+
+  const auditEntry = {
+    action: 'officer_verification',
+    verdict,
+    notes: notes.trim(),
+    officer_id,
+    timestamp,
+  };
+
+  grievanceStore[idx] = {
+    ...current,
+    authenticity_flag: newFlag,
+    authenticity_risk_score: newRisk,
+    officer_verdict: verdict,
+    officer_notes: notes.trim(),
+    verified_at: timestamp,
+    verified_by: officer_id,
+    audit_log: [...(current.audit_log || []), auditEntry],
+  };
+
+  return grievanceStore[idx];
 }
 
 function calcStats(records) {
@@ -296,5 +340,6 @@ module.exports = {
   updateGrievanceStatus,
   recordAcknowledgment,
   updateGrievanceAnalysis,
+  recordVerification,
   calcStats,
 };
