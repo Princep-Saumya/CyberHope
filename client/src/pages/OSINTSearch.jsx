@@ -102,9 +102,6 @@ function PublicSourceSearch({ onImportSourceItem }) {
           <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
             <Radio size={15} className="text-amber-500" /> Public Source Search
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Search live public coverage, news feeds, and citizen videos across Bihar. Analyze any item with Gemini AI to ingest it into official grievance tracking.
-          </p>
         </div>
         <details className="relative self-start md:self-auto md:min-w-52 rounded-lg border border-zinc-800 bg-zinc-900">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-semibold text-amber-400">
@@ -190,9 +187,6 @@ function PublicSourceSearch({ onImportSourceItem }) {
           ))}
         </div>
       )}
-      <p className="mt-2 text-xs text-slate-500">
-        Search one sector at a time using the organizers’ terms; broad Boolean fan-out is avoided to conserve YouTube quota.
-      </p>
       {source === 'youtube' && selectedStatus?.searches_remaining === 0 && (
         <p role="status" className="mt-2 text-xs text-amber-800">YouTube’s daily safety quota is reached. Search again tomorrow.</p>
       )}
