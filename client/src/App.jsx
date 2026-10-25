@@ -233,7 +233,7 @@ export default function App() {
             {actionNotice.title && <p className="font-semibold">{actionNotice.title}</p>}
             <p className={`${actionNotice.title ? 'mt-1 line-clamp-2' : ''}`}>
               {actionNotice.title ? `“${actionNotice.text}”` : actionNotice.text}
-              {actionNotice.mode ? ` · ${actionNotice.mode.startsWith('groq:') ? 'Groq text triage' : actionNotice.mode.startsWith('gemini') ? 'Gemini fallback triage' : 'local heuristic analysis'}` : ''}
+              {actionNotice.mode ? ` · ${actionNotice.mode.startsWith('grok:') ? 'xAI Grok text triage' : actionNotice.mode.startsWith('groq:') ? 'Groq text triage' : actionNotice.mode.startsWith('gemini') ? 'Gemini fallback triage' : 'local heuristic analysis'}` : ''}
             </p>
             {actionNotice.ticket ? (
               <button type="button" onClick={handleViewActionTicket} className="mt-2 text-xs font-semibold text-blue-700 hover:text-blue-900 hover:underline">

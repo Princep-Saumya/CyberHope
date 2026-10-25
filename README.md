@@ -252,6 +252,8 @@ npm run build
 
 | Variable | Default | Required | Description |
 |---|---|---|---|
+| `GROK_API_KEY` | *(empty)* | ❌ Optional | xAI Grok API key for high-speed LLM text triage. `XAI_API_KEY` is also supported. |
+| `GROK_MODEL` | `grok-2-latest` | ❌ Optional | xAI Grok model (`grok-2-latest`, `grok-beta`, `grok-2`). |
 | `GROQ_API_KEY` | *(empty)* | ❌ Optional | Groq key for primary text triage. `Groq_API_KEY` is also recognized for existing `.env` files. |
 | `GROQ_MODEL` | `openai/gpt-oss-20b` | ❌ Optional | Groq chat model used for text classification. |
 | `GEMINI_API_KEY` | *(empty)* | ❌ Optional | Google Gemini key for uploaded-image descriptions and Groq text fallback. |

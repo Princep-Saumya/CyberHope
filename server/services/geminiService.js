@@ -6,6 +6,7 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { consumeDailyQuota } = require('./quotaService');
 const { generateGroqContent } = require('./groqService');
+const { generateGrokContent } = require('./grokService');
 const { detectSector, getSector, sectors } = require('./osintTaxonomy');
 
 const GEMINI_MIN_INTERVAL_MS = 6000;
@@ -336,7 +337,19 @@ async function analyzePost(postText, imageOcrText = '', { useGemini = true, imag
   const prompt = buildTriagePrompt(postText, imageOcrText);
   let triage = null;
 
-  if (process.env.GROQ_API_KEY || process.env.Groq_API_KEY) {
+  if (process.env.GROK_API_KEY || process.env.XAI_API_KEY) {
+    try {
+      const result = await generateGrokContent(prompt);
+      triage = {
+        parsed: parseTriageResponse(result.content),
+        analysisMode: `grok:${result.model}`,
+      };
+    } catch (error) {
+      console.error('xAI Grok text classification failed; trying configured fallback:', error.message);
+    }
+  }
+
+  if (!triage && (process.env.GROQ_API_KEY || process.env.Groq_API_KEY)) {
     try {
       const result = await generateGroqContent(prompt);
       triage = {

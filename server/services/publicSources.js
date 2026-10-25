@@ -2,6 +2,7 @@ const Parser = require('rss-parser');
 const { consumeDailyQuota, getDailyUsage } = require('./quotaService');
 const { getGeminiHealth } = require('./geminiService');
 const { getGroqStatus } = require('./groqService');
+const { getGrokStatus } = require('./grokService');
 const { getSearchTaxonomy } = require('./osintTaxonomy');
 
 const rssParser = new Parser();
@@ -48,6 +49,7 @@ function getSourceStatus() {
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY);
   const geminiHealth = getGeminiHealth();
   const groqStatus = getGroqStatus();
+  const grokStatus = getGrokStatus();
 
   return {
     'google-news': {
@@ -73,6 +75,10 @@ function getSourceStatus() {
       searches_today: youtubeSearchCount,
       searches_remaining: Math.max(0, YOUTUBE_DAILY_SEARCH_LIMIT - youtubeSearchCount),
       minimum_interval_seconds: YOUTUBE_MIN_INTERVAL_MS / 1000,
+    },
+    grok: {
+      ...grokStatus,
+      label: `xAI Grok ${grokStatus.model} (Text Triage)`,
     },
     groq: {
       ...groqStatus,

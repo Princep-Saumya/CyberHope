@@ -75,7 +75,8 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
   const getPlainEngineText = (mode) => {
     if (!mode) return 'AI Engine: Active';
     if (mode === 'heuristic-fallback') return 'Local Fast Scanner (Active)';
-    if (mode.includes('groq')) return 'Groq XAI Engine (Active)';
+    if (mode.includes('grok')) return 'xAI Grok Engine (Active)';
+    if (mode.includes('groq')) return 'Groq LPU Engine (Active)';
     if (mode.includes('gemini')) return 'Gemini Flash AI (Active)';
     return `${mode} (Active)`;
   };

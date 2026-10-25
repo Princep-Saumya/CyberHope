@@ -128,6 +128,11 @@ function PublicSourceSearch({ onImportSourceItem }) {
             {!selectedStatus?.configured && selectedStatus?.reason && (
               <p className="mt-2 text-xs text-amber-800">{selectedStatus.reason} Add credentials to the server environment to enable this source.</p>
             )}
+            {statuses.grok?.configured && statuses.grok.status !== 'ready' && (
+              <p role="status" className="mt-2 border-t border-slate-100 pt-2 text-xs text-amber-800">
+                xAI Grok: {statuses.grok.status}. Text analysis may use Groq or Gemini fallback.
+              </p>
+            )}
             {statuses.groq?.configured && statuses.groq.status !== 'ready' && (
               <p role="status" className="mt-2 border-t border-slate-100 pt-2 text-xs text-amber-800">
                 Groq: {statuses.groq.status}. Text analysis may use Gemini fallback or local heuristics.
@@ -252,7 +257,7 @@ function PublicSourceSearch({ onImportSourceItem }) {
                 </div>
                 {action?.state === 'saved' && (
                   <p className="mt-2 text-xs text-emerald-700">
-                    {action.duplicate ? 'This source link was already recorded.' : `${action.department} · Severity ${action.severity}/10 · ${action.mode?.startsWith('groq:') ? 'Groq' : action.mode?.startsWith('gemini') ? 'Gemini fallback' : 'Local heuristic'} analysis`}
+                    {action.duplicate ? 'This source link was already recorded.' : `${action.department} · Severity ${action.severity}/10 · ${action.mode?.startsWith('grok:') ? 'xAI Grok' : action.mode?.startsWith('groq:') ? 'Groq' : action.mode?.startsWith('gemini') ? 'Gemini fallback' : 'Local heuristic'} analysis`}
                   </p>
                 )}
                 {action?.state === 'error' && <p role="alert" className="text-xs text-rose-700">{action.message}</p>}

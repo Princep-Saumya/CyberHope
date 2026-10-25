@@ -230,7 +230,7 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
               <div className="flex items-center gap-2 mb-2">
                 <Brain size={14} className="text-violet-800" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-violet-900">
-                  {grievance.analysis_mode?.startsWith('groq:') ? 'Groq Text Triage' : grievance.analysis_mode?.startsWith('gemini') ? 'Gemini Fallback Summary' : 'Analysis Summary'}
+                  {grievance.analysis_mode?.startsWith('grok:') ? 'xAI Grok Text Triage' : grievance.analysis_mode?.startsWith('groq:') ? 'Groq Text Triage' : grievance.analysis_mode?.startsWith('gemini') ? 'Gemini Fallback Summary' : 'Analysis Summary'}
                 </h3>
               </div>
               <p className="text-sm text-violet-950 leading-relaxed">
