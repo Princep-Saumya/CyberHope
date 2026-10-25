@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import {
   CheckCircle2, Clock, AlertTriangle, FileText, Save,
-  ChevronDown, ChevronRight, MapPin, Building2, Calendar,
-  User, Download, Zap, Loader2, Megaphone
+  ChevronRight, MapPin, Building2, Calendar,
+  User, Download, Zap, Loader2, Megaphone, X, ExternalLink, Image as ImgIcon
 } from 'lucide-react';
 import { api } from '../services/api';
 import { formatDateTime, formatDistanceToNow } from '../utils/dateUtils';
@@ -51,7 +51,7 @@ function exportCSV(grievances) {
   ]);
   const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-  const a   = Object.assign(document.createElement('a'), { href: url, download: `GrievancePulse_SLA_Audit_${new Date().toISOString().slice(0,10)}.csv` });
+  const a   = Object.assign(document.createElement('a'), { href: url, download: `JanSuno_SLA_Audit_${new Date().toISOString().slice(0,10)}.csv` });
   a.click(); URL.revokeObjectURL(url);
 }
 
@@ -71,18 +71,18 @@ function LifecycleStepper({ currentStatus, grievanceId, onUpdate, onError }) {
         return (
           <div key={s} className="flex items-center flex-1 min-w-0">
             <button onClick={() => handle(s)} disabled={loading || isCurrent}
-              className="flex flex-col items-center gap-1 flex-1 min-w-0 px-1 py-2 rounded-lg transition-all hover:bg-slate-100 disabled:cursor-default" title={s}>
-              <div className="w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0"
+              className="flex flex-col items-center gap-1 flex-1 min-w-0 px-1 py-2 rounded-xl transition-all hover:bg-slate-100 disabled:cursor-default" title={s}>
+              <div className="w-7 h-7 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-transform duration-200 hover:scale-110"
                 style={{ background: isDone ? '#22c55e' : isCurrent ? cfg.dot : '#f1f5f9', borderColor: isDone ? '#22c55e' : isCurrent ? cfg.dot : '#e2e8f0' }}>
-                {isDone ? <CheckCircle2 size={12} className="text-white" />
-                  : isCurrent ? <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                  : <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />}
+                {isDone ? <CheckCircle2 size={14} className="text-white" />
+                  : isCurrent ? <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+                  : <span className="w-2 h-2 rounded-full bg-slate-300" />}
               </div>
-              <span className="font-medium truncate w-full text-center"
-                style={{ fontSize: 10, color: isCurrent ? cfg.dot : isDone ? '#22c55e' : '#94a3b8' }}>{s}</span>
+              <span className="font-bold truncate w-full text-center text-xs mt-0.5"
+                style={{ color: isCurrent ? cfg.dot : isDone ? '#22c55e' : '#94a3b8' }}>{s}</span>
             </button>
             {idx < STATUS_FLOW.length - 1 && (
-              <div className="h-0.5 w-3 flex-shrink-0 mx-0.5 transition-all"
+              <div className="h-0.5 w-4 flex-shrink-0 mx-1 transition-all"
                 style={{ background: idx < currentIdx ? '#22c55e' : '#e2e8f0' }} />
             )}
           </div>
@@ -92,236 +92,434 @@ function LifecycleStepper({ currentStatus, grievanceId, onUpdate, onError }) {
   );
 }
 
-function ResolutionRow({ g, onUpdate, onEscalate }) {
-  const [expanded, setExpanded]     = useState(false);
-  const [localStatus, setLocal]     = useState(g.status);
-  const [localAudit, setAudit]      = useState(g.audit_log || []);
-  const [response, setResponse]     = useState(() => fillTemplate(RESPONSE_TEMPLATES[g.status] || '', g));
-  const [acknowledgmentRecorded, setAcknowledgmentRecorded] = useState(Boolean(g.acknowledgment));
+// ── DETAIL POP-UP MODAL ─────────────────────────────────────────────────────
+function ResolutionDetailModal({ grievance, onClose, onUpdate, onEscalate }) {
+  const [localStatus, setLocal] = useState(grievance.status);
+  const [localAudit, setAudit] = useState(grievance.audit_log || []);
+  const [response, setResponse] = useState(() => fillTemplate(RESPONSE_TEMPLATES[grievance.status] || '', grievance));
+  const [acknowledgmentRecorded, setAcknowledgmentRecorded] = useState(Boolean(grievance.acknowledgment));
   const [ackLoading, setAckLoading] = useState(false);
   const [actionError, setActionError] = useState('');
-  const [aiLoading, setAiLoading]   = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [aiResponse, setAiResponse] = useState('');
   const [aiResponseSource, setAiResponseSource] = useState('');
   const [escLoading, setEscLoading] = useState(false);
-  const [isEscalated, setEscalated] = useState(false);
+  const [isEscalated, setEscalated] = useState(grievance.status === 'Escalated to DM');
 
   const cfg = STATUS_CFG[localStatus] || STATUS_CFG.Received;
-  const sla = getSlaInfo({ ...g, status: localStatus });
+  const sla = getSlaInfo({ ...grievance, status: localStatus });
 
-  useEffect(() => { setLocal(g.status); }, [g.status]);
   useEffect(() => {
-    setAudit(g.audit_log || []);
-    setAcknowledgmentRecorded(Boolean(g.acknowledgment));
-  }, [g.audit_log, g.acknowledgment]);
+    const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
-  const handleUpdate = async (id, status) => {
+  const handleUpdateStatus = async (id, status) => {
     setActionError('');
     await onUpdate(id, status);
     setLocal(status);
-    setResponse(fillTemplate(RESPONSE_TEMPLATES[status] || '', g));
+    setResponse(fillTemplate(RESPONSE_TEMPLATES[status] || '', grievance));
   };
 
   const handleGenerateAI = async () => {
     setAiLoading(true);
     setActionError('');
     try {
-      const r = await api.generateOfficialResponse(g.id);
+      const r = await api.generateOfficialResponse(grievance.id);
       setAiResponse(r.response);
       setAiResponseSource(r.source);
       setResponse(r.response);
     } catch(e) {
-      setActionError(`Could not generate a response: ${e.message}`);
+      setActionError(`Could not generate response: ${e.message}`);
     } finally {
       setAiLoading(false);
     }
   };
 
-  const handleEscalate = async () => {
+  const handleEscalateAction = async () => {
     setEscLoading(true);
     setActionError('');
     try {
-      const r = await onEscalate(g.id);
+      const r = await onEscalate(grievance.id);
       setLocal('Escalated to DM');
       setAudit(r.record?.audit_log || [...localAudit, { action: 'ESCALATED_TO_DM', timestamp: new Date().toISOString(), by: 'System', note: 'Escalated to DM due to SLA breach' }]);
       setEscalated(true);
     } catch(e) {
-      setActionError(`Could not escalate this report: ${e.message}`);
+      setActionError(`Could not escalate: ${e.message}`);
     } finally {
       setEscLoading(false);
     }
   };
 
-  const handleRecordAcknowledgment = async () => {
+  const handleRecordAck = async () => {
     setAckLoading(true);
     setActionError('');
     try {
-      const result = await api.recordAcknowledgment(g.id, response);
+      const result = await api.recordAcknowledgment(grievance.id, response);
       setAudit(result.record.audit_log || []);
       setAcknowledgmentRecorded(true);
     } catch(e) {
-      setActionError(`Could not save the acknowledgment: ${e.message}`);
+      setActionError(`Could not save acknowledgment: ${e.message}`);
     } finally {
       setAckLoading(false);
     }
   };
 
   return (
-    <div className={`rounded-xl border overflow-hidden transition-all duration-200 bg-white ${
-      isEscalated ? 'border-rose-300' :
-      sla?.overdue ? 'border-rose-200' : 'border-slate-200'
-    }`}>
-      <div className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
-        onClick={() => setExpanded(e => !e)}>
-        <span className="relative flex-shrink-0">
-          <span className="w-2.5 h-2.5 rounded-full block" style={{ background: cfg.dot }} />
-          {sla?.overdue && !isEscalated && (
-            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 animate-pulse border border-white" />
+    <div
+      className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="relative bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden text-slate-800 animate-modal-spring"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ── Modal Header ── */}
+        <div className="p-4 sm:p-5 border-b border-slate-200 bg-white flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="p-2 rounded-xl shrink-0 border bg-blue-50 border-blue-200 text-blue-700">
+              <Building2 size={20} />
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-base font-extrabold text-slate-900 truncate">
+                  {grievance.category || 'Public Grievance'}
+                </span>
+                <span className={`badge border text-xs font-bold px-2.5 py-0.5 ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+                  {localStatus}
+                </span>
+                {sla && (
+                  <span className={`flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                    sla.overdue ? 'bg-rose-50 border-rose-200 text-rose-700 animate-glow-rose' : 'bg-amber-50 border-amber-200 text-amber-700'
+                  }`}>
+                    <Clock size={11} /> {sla.label}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-mono flex-wrap">
+                <span className="font-bold text-slate-800">{grievance.id}</span>
+                <span>·</span>
+                <span>{grievance.location_tagged || 'Bihar'}</span>
+                <span>·</span>
+                <span>{grievance.department || 'General Administration'}</span>
+                <span>·</span>
+                <span>Filed {formatDistanceToNow(grievance.timestamp)}</span>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors shrink-0"
+            title="Close dialog"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* ── Modal Body (Scrollable) ── */}
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-5 bg-slate-50/60">
+
+          {/* Action error banner */}
+          {actionError && (
+            <div role="alert" className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl p-3 flex items-center gap-2">
+              <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+              <span>{actionError}</span>
+            </div>
           )}
-        </span>
-        <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-4 gap-2 items-center">
-          <div className="min-w-0">
-            <div className="text-sm font-bold text-slate-800 truncate">{g.category}</div>
-            <div className="text-xs text-slate-400 font-mono">{g.id}</div>
-          </div>
-          <div className="text-sm text-slate-600 flex items-center gap-1.5">
-            <MapPin size={11} className="text-emerald-600 flex-shrink-0"/>{g.location_tagged}
-          </div>
-          <div className="text-xs text-slate-500 flex items-center gap-1.5 truncate">
-            <Building2 size={11} className="text-slate-400 flex-shrink-0"/>
-            <span className="truncate">{g.department?.split('(')[0]?.trim()}</span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`badge border text-xs font-bold ${cfg.bg} ${cfg.text} ${cfg.border}`}>{localStatus}</span>
-            {sla && (
-              <span className={`flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full border ${
-                sla.overdue ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-amber-50 border-amber-200 text-amber-700'
-              }`}>
-                <Clock size={10}/>{sla.label}
+
+          {/* ════ SECTION 1: CITIZEN REPORT CONTENT & EVIDENCE ════ */}
+          <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+              <FileText size={14} className="text-blue-600" /> Citizen Grievance Statement & Media Evidence
+            </span>
+
+            <p className="text-sm text-slate-800 font-sans leading-relaxed bg-slate-50/80 border border-slate-200/80 rounded-xl p-4 italic">
+              "{grievance.post_text}"
+            </p>
+
+            {grievance.image_url && (
+              <div className="mt-2 rounded-xl overflow-hidden border border-slate-200 max-h-60 bg-slate-900 relative">
+                <img
+                  src={grievance.image_url}
+                  alt="Evidence"
+                  className="w-full h-full object-cover max-h-60"
+                  onError={e => { e.target.style.display = 'none'; }}
+                />
+                {grievance.source_url && (
+                  <a
+                    href={grievance.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="absolute top-2 right-2 px-3 py-1 text-xs font-semibold text-white bg-slate-900/80 hover:bg-slate-900 rounded-lg flex items-center gap-1.5 backdrop-blur shadow"
+                  >
+                    <span>Inspect Source</span>
+                    <ExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ════ SECTION 2: STATUS LIFECYCLE STEPPER ════ */}
+          <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <CheckCircle2 size={14} className="text-emerald-600" /> Progression Lifecycle Stepper
               </span>
-            )}
-            {sla?.overdue && !isEscalated && (
-              <button onClick={e => { e.stopPropagation(); handleEscalate(); }} disabled={escLoading}
-                className="flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white transition-colors">
-                {escLoading ? <Loader2 size={10} className="animate-spin"/> : <Megaphone size={10}/>} Escalate to DM
+              <span className="text-xs text-slate-400">Click a stage to update resolution state</span>
+            </div>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+              <LifecycleStepper currentStatus={localStatus} grievanceId={grievance.id} onUpdate={handleUpdateStatus} onError={setActionError} />
+            </div>
+          </section>
+
+          {/* ════ SECTION 3: ESCALATION BANNER (IF OVERDUE) ════ */}
+          {sla?.overdue && !isEscalated && (
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-3">
+                <span className="p-2 rounded-xl bg-rose-100 text-rose-700">
+                  <Megaphone size={18} />
+                </span>
+                <div>
+                  <div className="text-sm font-bold text-rose-800">SLA Breach Detected ({sla.label})</div>
+                  <div className="text-xs text-rose-600">Standard response timeline has lapsed. Official escalation required.</div>
+                </div>
+              </div>
+              <button
+                onClick={handleEscalateAction}
+                disabled={escLoading}
+                className="btn-danger text-xs font-bold px-4 py-2.5 rounded-xl shadow-xs flex items-center gap-1.5"
+              >
+                {escLoading ? <Loader2 size={13} className="animate-spin" /> : <Megaphone size={13} />}
+                <span>Escalate to District Magistrate</span>
               </button>
-            )}
-            {isEscalated && (
-              <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700">🚨 Escalated to DM</span>
-            )}
-          </div>
-        </div>
-        {expanded ? <ChevronDown size={14} className="text-slate-400 flex-shrink-0"/> : <ChevronRight size={14} className="text-slate-400 flex-shrink-0"/>}
-      </div>
-
-      {actionError && (
-        <div role="alert" className="mx-4 mb-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2">
-          {actionError}
-        </div>
-      )}
-
-      {expanded && (
-        <div className="border-t border-slate-100 p-4 bg-slate-50 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="flex flex-col gap-3">
-            <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Status Lifecycle</div>
-              <div className="bg-white border border-slate-200 rounded-xl p-3">
-                <LifecycleStepper currentStatus={localStatus} grievanceId={g.id} onUpdate={handleUpdate} onError={setActionError}/>
-              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-white border border-slate-200 rounded-lg p-2.5">
-                <div className="text-slate-500 mb-0.5 flex items-center gap-1"><User size={10}/>Author</div>
-                <div className="font-bold text-slate-800">{g.author_handle}</div>
+          )}
+
+          {/* ════ SECTION 4: ACTIONS & AUDIT GRID ════ */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+            {/* Left: Metadata & Audit Timeline */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="bg-white border border-slate-200 rounded-xl p-3">
+                  <div className="text-slate-500 mb-1 flex items-center gap-1"><User size={12}/> Author / Handle</div>
+                  <div className="font-bold text-slate-900 truncate">{grievance.author_handle || '@citizen'}</div>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-xl p-3">
+                  <div className="text-slate-500 mb-1 flex items-center gap-1"><Calendar size={12}/> Registered At</div>
+                  <div className="font-bold text-slate-900 truncate">{formatDateTime(grievance.timestamp)}</div>
+                </div>
               </div>
-              <div className="bg-white border border-slate-200 rounded-lg p-2.5">
-                <div className="text-slate-500 mb-0.5 flex items-center gap-1"><Calendar size={10}/>Filed</div>
-                <div className="font-bold text-slate-800">{formatDistanceToNow(g.timestamp)}</div>
-              </div>
-            </div>
-            {g.resolution_note && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                <div className="text-xs font-bold text-emerald-700 mb-1 flex items-center gap-1"><CheckCircle2 size={11}/>Resolution Note</div>
-                <p className="text-xs text-emerald-800 leading-relaxed">{g.resolution_note}</p>
-                {g.resolution_date && <div className="text-xs text-emerald-600 mt-1 font-mono">{formatDateTime(g.resolution_date)}</div>}
-              </div>
-            )}
-            {localAudit.length > 0 && (
-              <div className="bg-white border border-slate-200 rounded-xl p-3">
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Audit Timeline</div>
-                <div className="flex flex-col gap-2">
-                  {localAudit.map((entry, i) => (
-                    <div key={i} className="flex items-start gap-2 text-xs">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-400 flex-shrink-0 mt-1"/>
-                      <div>
-                        <span className="font-bold text-slate-700">{entry.action}</span>
-                        <span className="text-slate-400 ml-1 font-mono">{entry.timestamp?.slice(0,16).replace('T',' ')}</span>
-                        <div className="text-slate-500">{entry.note}</div>
+
+              {grievance.resolution_note && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                  <div className="text-xs font-bold text-emerald-800 mb-1 flex items-center gap-1.5">
+                    <CheckCircle2 size={13}/> Official Resolution Note
+                  </div>
+                  <p className="text-xs text-emerald-900 leading-relaxed">{grievance.resolution_note}</p>
+                  {grievance.resolution_date && (
+                    <div className="text-[11px] text-emerald-700 mt-1.5 font-mono">{formatDateTime(grievance.resolution_date)}</div>
+                  )}
+                </div>
+              )}
+
+              {localAudit.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                  <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                    Legally Traceable Audit Timeline
+                  </div>
+                  <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1">
+                    {localAudit.map((entry, i) => (
+                      <div key={i} className="flex items-start gap-2.5 text-xs bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0 mt-1" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold text-slate-800">{entry.action}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {entry.timestamp?.slice(0, 16).replace('T', ' ')}
+                            </span>
+                          </div>
+                          <div className="text-slate-600 mt-0.5 leading-snug">{entry.note}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <div className="bg-white border border-slate-200 rounded-xl p-3">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                <Zap size={11} className="text-amber-500"/>AI Response Draft
-              </div>
-              <button onClick={handleGenerateAI} disabled={aiLoading}
-                className="w-full flex items-center justify-center gap-2 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 text-sm font-bold px-4 py-2.5 rounded-lg transition-colors mb-2">
-                {aiLoading ? <Loader2 size={13} className="animate-spin"/> : <Zap size={13}/>}
-                {aiLoading ? 'Generating...' : '⚡ Generate Draft for Review'}
-              </button>
-              {aiResponseSource && (
-                <div className="text-xs text-slate-500 mb-2">
-                  Generated by {aiResponseSource?.startsWith('gemini') ? 'Gemini' : 'a response template'}. Review before use; it is not sent automatically.
-                </div>
-              )}
-              {aiResponse && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800 italic leading-relaxed">"{aiResponse}"</div>
               )}
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl p-3">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                <FileText size={11}/>Citizen Update Draft
-              </div>
-              <p className="mb-2 text-[11px] leading-relaxed text-slate-600">
-                This is a public-facing response draft. Saving it records the text locally; it does not send a message to the citizen.
-              </p>
-              <textarea rows={4} value={response}
-                onChange={e => setResponse(e.target.value)}
-                className="input-field resize-none text-xs font-mono leading-relaxed mb-2"/>
-              <div className="flex gap-2">
-                <button onClick={handleRecordAcknowledgment} disabled={ackLoading} className="text-xs font-bold text-zinc-950 bg-amber-500 hover:bg-amber-400 rounded-lg px-3 py-1.5 flex-1 justify-center inline-flex items-center gap-2 transition-colors disabled:opacity-60">
-                  {ackLoading ? <Loader2 size={12} className="animate-spin"/> : <Save size={12}/>}
-                  {ackLoading ? 'Saving draft…' : acknowledgmentRecorded ? 'Draft saved locally' : 'Save response draft'}
+            {/* Right: AI Response Draft & Citizen Acknowledgment */}
+            <div className="space-y-4">
+              {/* AI Draft Generator */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Zap size={13} className="text-amber-500" /> Automated AI Response Draft
+                </div>
+                <button
+                  onClick={handleGenerateAI}
+                  disabled={aiLoading}
+                  className="w-full flex items-center justify-center gap-2 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-xs disabled:opacity-60 mb-2"
+                >
+                  {aiLoading ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+                  <span>{aiLoading ? 'Generating AI Response...' : '⚡ Generate Draft for Review'}</span>
                 </button>
-                <button onClick={() => {
-                  setResponse(fillTemplate(RESPONSE_TEMPLATES[localStatus] || '', g));
-                  setAcknowledgmentRecorded(Boolean(g.acknowledgment));
-                  setActionError('');
-                }} className="btn-secondary text-xs py-1.5 px-3">Reset</button>
+                {aiResponse && (
+                  <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 italic leading-relaxed">
+                    "{aiResponse}"
+                  </div>
+                )}
               </div>
-              {acknowledgmentRecorded && (
-                <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2 font-medium">
-                  Saved to the local audit only. No message was sent to the citizen.
+
+              {/* Citizen Response Draft Console */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs">
+                <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <FileText size={13} className="text-blue-600" /> Official Response Dispatch
                 </div>
-              )}
+                <p className="text-[11px] text-slate-500 mb-2">
+                  Draft an official communication. Saving stamps the dispatch text into the local audit trail.
+                </p>
+                <textarea
+                  rows={4}
+                  value={response}
+                  onChange={e => setResponse(e.target.value)}
+                  className="input-field resize-none text-xs font-mono leading-relaxed mb-3 rounded-xl p-3"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleRecordAck}
+                    disabled={ackLoading}
+                    className="text-xs font-bold text-zinc-950 bg-amber-400 hover:bg-amber-300 rounded-xl px-4 py-2 flex-1 justify-center inline-flex items-center gap-2 transition-all shadow-xs disabled:opacity-60 active:scale-95"
+                  >
+                    {ackLoading ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                    <span>{ackLoading ? 'Saving draft…' : acknowledgmentRecorded ? 'Draft Saved to Audit Log' : 'Save Response to Audit'}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setResponse(fillTemplate(RESPONSE_TEMPLATES[localStatus] || '', grievance));
+                      setAcknowledgmentRecorded(Boolean(grievance.acknowledgment));
+                      setActionError('');
+                    }}
+                    className="btn-secondary text-xs py-2 px-3 rounded-xl"
+                  >
+                    Reset
+                  </button>
+                </div>
+                {acknowledgmentRecorded && (
+                  <div className="mt-2.5 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 font-medium flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                    <span>Saved to official audit trail. Ready for departmental transmission.</span>
+                  </div>
+                )}
+              </div>
             </div>
+
           </div>
+
         </div>
-      )}
+
+        {/* ── Modal Footer ── */}
+        <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
+          <span className="font-mono text-[11px]">Bihar Cyber Crime & Disinformation Monitoring Unit</span>
+          <button
+            onClick={onClose}
+            className="btn-secondary text-xs py-1.5 px-4 rounded-xl"
+          >
+            Close Dialog
+          </button>
+        </div>
+
+      </div>
     </div>
   );
 }
 
+// ── COMPACT LIST CARD ROW ───────────────────────────────────────────────────
+function ResolutionRow({ g, onOpenModal, onEscalate }) {
+  const cfg = STATUS_CFG[g.status] || STATUS_CFG.Received;
+  const sla = getSlaInfo(g);
+  const isEscalated = g.status === 'Escalated to DM';
+
+  return (
+    <div
+      onClick={() => onOpenModal(g)}
+      className={`group card interactive-card animate-fade-slide-up rounded-2xl border p-4 cursor-pointer transition-all duration-200 bg-white hover:border-blue-400 hover:shadow-md flex items-center justify-between gap-4 flex-wrap ${
+        isEscalated ? 'border-rose-300' :
+        sla?.overdue ? 'border-rose-200' : 'border-slate-200'
+      }`}
+    >
+      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+        <span className="relative flex-shrink-0">
+          <span className="w-3 h-3 rounded-full block" style={{ background: cfg.dot }} />
+          {sla?.overdue && !isEscalated && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-500 animate-pulse border border-white" />
+          )}
+        </span>
+        <div className="min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-center">
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors truncate">
+              {g.category || 'Public Grievance'}
+            </div>
+            <div className="text-xs text-slate-400 font-mono">{g.id}</div>
+          </div>
+          <div className="text-xs text-slate-600 flex items-center gap-1.5 truncate">
+            <MapPin size={12} className="text-emerald-600 flex-shrink-0" />
+            <span className="truncate">{g.location_tagged || 'Location unverified'}</span>
+          </div>
+          <div className="text-xs text-slate-500 flex items-center gap-1.5 truncate">
+            <Building2 size={12} className="text-slate-400 flex-shrink-0" />
+            <span className="truncate">{g.department?.split('(')[0]?.trim() || 'General Administration'}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`badge border text-xs font-bold ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+              {g.status}
+            </span>
+            {sla && (
+              <span className={`flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                sla.overdue ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+              }`}>
+                <Clock size={11} />
+                {sla.label}
+              </span>
+            )}
+            {isEscalated && (
+              <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-700">
+                🚨 Escalated
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2.5 flex-shrink-0">
+        {sla?.overdue && !isEscalated && (
+          <button
+            onClick={e => {
+              e.stopPropagation();
+              onEscalate(g.id);
+            }}
+            className="flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-xs"
+          >
+            <Megaphone size={11} /> Escalate to DM
+          </button>
+        )}
+        <div className="flex items-center gap-1 text-xs font-semibold text-blue-600 group-hover:text-blue-800 transition-colors">
+          <span>View Details</span>
+          <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MAIN RESOLUTION PORTAL ──────────────────────────────────────────────────
 export default function ResolutionPortal({ grievances, onUpdateStatus, onEscalate }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [selectedModalGrievance, setSelectedModalGrievance] = useState(null);
+
   const departments = useMemo(
     () => [...new Set(grievances.map(g => g.department).filter(Boolean))].sort(),
     [grievances]
@@ -337,6 +535,7 @@ export default function ResolutionPortal({ grievances, onUpdateStatus, onEscalat
     (!statusFilter || g.status === statusFilter) &&
     (!departmentFilter || g.department === departmentFilter)
   );
+
   const overdueCount = useMemo(() => grievances.filter(g => {
     const sla = SLA_HOURS[g.status]; if (!sla) return false;
     return Date.now() > new Date(g.timestamp).getTime() + sla * 3600000;
@@ -391,16 +590,34 @@ export default function ResolutionPortal({ grievances, onUpdateStatus, onEscalat
           </span>
           <div>
             <span className="text-sm font-bold text-rose-700">{overdueCount} complaint{overdueCount > 1 ? 's' : ''} have exceeded SLA</span>
-            <span className="text-xs text-rose-500 ml-2">— Use "Escalate to DM" on each overdue row</span>
+            <span className="text-xs text-rose-500 ml-2">— Click any row to inspect details or Escalate to DM</span>
           </div>
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
+      {/* ── Compact, Clean List View of Reports ── */}
+      <div className="flex flex-col gap-2.5">
         {filtered.length === 0
           ? <div className="card p-10 text-center text-slate-400 font-medium">No complaints in this status</div>
-          : filtered.map(g => <ResolutionRow key={g.id} g={g} onUpdate={onUpdateStatus} onEscalate={onEscalate}/>)}
+          : filtered.map(g => (
+              <ResolutionRow
+                key={g.id}
+                g={g}
+                onOpenModal={setSelectedModalGrievance}
+                onEscalate={onEscalate}
+              />
+            ))}
       </div>
+
+      {/* ── Detail Pop-Up Modal ── */}
+      {selectedModalGrievance && (
+        <ResolutionDetailModal
+          grievance={selectedModalGrievance}
+          onClose={() => setSelectedModalGrievance(null)}
+          onUpdate={onUpdateStatus}
+          onEscalate={onEscalate}
+        />
+      )}
     </div>
   );
 }
