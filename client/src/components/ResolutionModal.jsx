@@ -102,7 +102,7 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
       style={{ background: 'rgba(15,23,42,0.45)', backdropFilter: 'blur(4px)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl shadow-slate-900/20">
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl shadow-slate-900/20 animate-modal-spring">
         <div className="flex items-center justify-between gap-4 px-5 sm:px-6 py-4 border-b border-slate-200 bg-slate-50/70">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-1">

@@ -511,7 +511,7 @@ function ForensicAnalysisModal({
       onClick={onClose}
     >
       <div
-        className="relative bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden text-slate-800"
+        className="relative bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden text-slate-800 animate-modal-spring"
         onClick={e => e.stopPropagation()}
       >
         {/* ── Modal Header ── */}
@@ -731,7 +731,10 @@ function ForensicAnalysisModal({
 
           {/* ════ CARD 3 (MIDDLE-2): EXPLAINABLE AI (XAI) REASONING ════ */}
           {/* Color Theme: Royal Violet / Indigo Gradient */}
-          <section className="bg-gradient-to-r from-violet-50/80 via-purple-50/60 to-indigo-50/80 border border-violet-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
+          <section className="relative overflow-hidden bg-gradient-to-r from-violet-50/80 via-purple-50/60 to-indigo-50/80 border border-violet-200 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col gap-3">
+            {/* Ambient Eye-Catching Shimmer Beam */}
+            <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-violet-300/25 to-transparent animate-shimmer pointer-events-none" />
+
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs font-bold text-violet-900 uppercase tracking-wide flex items-center gap-1.5">
                 <Sparkles size={14} className="text-violet-600" />
@@ -844,7 +847,7 @@ function ForensicAnalysisModal({
                 <button
                   onClick={() => handleVerdict('Verified Genuine')}
                   disabled={isVerifying}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 px-4 py-3 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 hover:shadow-lg hover:shadow-emerald-600/25 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 px-4 py-3 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
                 >
                   <Check size={16} />
                   <span>Verify Genuine</span>
@@ -854,7 +857,7 @@ function ForensicAnalysisModal({
                 <button
                   onClick={() => handleVerdict('Confirmed Fake')}
                   disabled={isVerifying}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 active:scale-95 px-4 py-3 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 hover:shadow-lg hover:shadow-rose-600/25 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 px-4 py-3 text-xs font-bold text-white shadow-sm transition-all disabled:opacity-60"
                 >
                   <ShieldX size={16} />
                   <span>Confirm Fake</span>
@@ -864,7 +867,7 @@ function ForensicAnalysisModal({
                 <button
                   onClick={() => handleVerdict('Under Field Investigation')}
                   disabled={isVerifying}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-95 px-4 py-3 text-xs font-bold text-zinc-950 shadow-sm transition-all disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-400 hover:bg-amber-300 hover:shadow-lg hover:shadow-amber-400/25 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 px-4 py-3 text-xs font-bold text-zinc-950 shadow-sm transition-all disabled:opacity-60"
                 >
                   <Clock size={16} />
                   <span>Request Field Check</span>
@@ -1178,7 +1181,7 @@ export default function AIVerification({
             <p className="text-[11px] text-slate-400 mt-1">Try clearing your search query or picking another filter tab.</p>
           </div>
         ) : (
-          filteredGrievances.map(g => {
+          filteredGrievances.map((g, idx) => {
             const reviewState = getReviewState(g);
             const pCfg = getPlatformCfg(g.platform);
             const PIcon = pCfg.icon;
@@ -1190,7 +1193,8 @@ export default function AIVerification({
               <div
                 key={g.id}
                 onClick={() => setActiveModalGrievance(g)}
-                className={`group card p-4 sm:p-5 cursor-pointer bg-white border border-slate-200/90 rounded-2xl hover:border-sky-400 hover:shadow-md transition-all flex flex-col gap-3 relative overflow-hidden border-l-4 ${reviewState.cardBorder}`}
+                style={{ animationDelay: `${Math.min(idx * 35, 300)}ms` }}
+                className={`group card interactive-card animate-fade-slide-up p-4 sm:p-5 cursor-pointer bg-white border border-slate-200/90 rounded-2xl hover:border-sky-400 flex flex-col gap-3 relative overflow-hidden border-l-4 ${reviewState.cardBorder}`}
               >
                 {/* Line 1: Platform, Author, Department, Time */}
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -1252,7 +1256,7 @@ export default function AIVerification({
 
                     {/* Civic Severity Pill */}
                     <span className={`badge border text-xs font-mono px-2 py-0.5 ${
-                      isCritical ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold'
+                      isCritical ? 'bg-rose-100 text-rose-800 border-rose-300 font-bold animate-glow-rose'
                                  : 'bg-slate-100 text-slate-700 border-slate-200'
                     }`}>
                       Severity: {severity}/10

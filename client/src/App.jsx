@@ -251,13 +251,13 @@ export default function App() {
       {realtimeNotification && (
         <aside
           aria-label="Real-time grievance alert"
-          className="fixed bottom-6 right-6 z-50 max-w-md w-full bg-white rounded-xl shadow-2xl border-2 border-blue-500/20 p-4 animate-in slide-in-from-bottom-5 transition-all"
+          className="fixed bottom-6 right-6 z-50 max-w-md w-full bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-blue-500/30 p-4.5 animate-modal-spring transition-all hover:shadow-blue-500/10"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+              <span className="relative flex h-3 w-3 items-center justify-center">
+                <span className="animate-radar-pulse absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500 shadow-xs shadow-rose-500/50"></span>
               </span>
               <span className="text-xs font-bold uppercase tracking-wider text-rose-600">
                 Live Public Report Ingested
@@ -265,7 +265,7 @@ export default function App() {
             </div>
             <button
               onClick={clearNotification}
-              className="text-slate-400 hover:text-slate-600 p-1"
+              className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
               title="Close notification"
             >
               <X size={14} />

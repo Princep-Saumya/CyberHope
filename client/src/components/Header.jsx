@@ -100,20 +100,20 @@ export default function Header({
             {pageMeta.title}
           </h1>
 
-          {/* Live Socket Streaming Badge */}
+          {/* Live Socket Streaming Badge with Concentric Radar Wave */}
           <span
-            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-colors ${
+            className={`inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-all ${
               isSocketConnected
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 shadow-sm'
-                : 'bg-amber-50 text-amber-700 border-amber-200'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-300 shadow-xs'
+                : 'bg-amber-50 text-amber-700 border-amber-300'
             }`}
             title={isSocketConnected ? 'Real-time WebSocket feed listener is connected' : 'Connecting to live telemetry socket...'}
           >
-            <span className="relative flex h-2 w-2">
+            <span className="relative flex h-2.5 w-2.5 items-center justify-center">
               {isSocketConnected && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="animate-radar-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               )}
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${isSocketConnected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${isSocketConnected ? 'bg-emerald-500 shadow-xs shadow-emerald-500/50' : 'bg-amber-500'}`}></span>
             </span>
             <span>{isSocketConnected ? 'LIVE FEED ACTIVE' : 'CONNECTING'}</span>
           </span>
@@ -130,7 +130,7 @@ export default function Header({
             placeholder="Search hashtags, districts, complaints... (e.g. #Patna)"
             value={globalSearch}
             onChange={e => onGlobalSearch(e.target.value)}
-            className="bg-slate-100/80 hover:bg-slate-100 border border-slate-200/90 text-slate-800 placeholder-slate-400 text-xs rounded-xl pl-9 pr-14 py-2 w-full focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 transition-all shadow-inner"
+            className="bg-slate-100/80 hover:bg-slate-100 border border-slate-200/90 text-slate-800 placeholder-slate-400 text-xs rounded-xl pl-9 pr-14 py-2 w-full focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 focus:shadow-[0_0_15px_rgba(59,130,246,0.15)] transition-all shadow-inner"
           />
           {globalSearch ? (
             <button
@@ -158,7 +158,7 @@ export default function Header({
           type="button"
           onClick={onPollRealtime}
           disabled={pollDisabled}
-          className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 active:scale-95 text-slate-700 hover:text-slate-900 text-xs font-bold shadow-sm transition-all disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:scale-95 text-slate-700 hover:text-slate-900 text-xs font-bold shadow-xs transition-all disabled:opacity-50"
           title="Query live Bihar public feeds (YouTube & Google News) now"
         >
           <RefreshCw size={13} className={pollingRealtime ? 'animate-spin text-blue-600' : 'text-slate-500'} />
@@ -166,14 +166,14 @@ export default function Header({
         </button>
 
         {/* Live Counters */}
-        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-100/80 border border-slate-200/80 px-2.5 py-1.5 rounded-xl">
+        <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-100/80 border border-slate-200/80 px-2.5 py-1.5 rounded-xl hover:border-slate-300 transition-colors">
           <Database size={13} className="text-slate-500" />
           <span className="text-slate-900 font-extrabold font-mono">{totalPosts}</span>
           <span className="text-slate-500">records</span>
         </div>
 
         {realtimeIngested > 0 && (
-          <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50 border border-cyan-200 px-2.5 py-1.5 rounded-xl">
+          <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-cyan-800 bg-cyan-50 border border-cyan-200 px-2.5 py-1.5 rounded-xl animate-glow-cyan">
             <Wifi size={13} className="text-cyan-600" />
             <span className="font-extrabold font-mono text-cyan-900">{realtimeIngested}</span>
             <span className="text-cyan-700">live</span>
@@ -181,7 +181,7 @@ export default function Header({
         )}
 
         {clusterCount > 0 && (
-          <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-xl">
+          <div className="hidden sm:flex items-center gap-1.5 text-xs font-semibold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1.5 rounded-xl hover:shadow-xs transition-shadow">
             <Layers size={13} className="text-indigo-600" />
             <span className="font-extrabold font-mono text-indigo-900">{clusterCount}</span>
             <span className="text-indigo-700">clusters</span>
@@ -189,7 +189,7 @@ export default function Header({
         )}
 
         {criticalCount > 0 && (
-          <div className="flex items-center gap-1.5 text-xs font-bold text-rose-800 bg-rose-50 border border-rose-300 px-2.5 py-1.5 rounded-xl shadow-xs">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-rose-800 bg-rose-50 border border-rose-300 px-2.5 py-1.5 rounded-xl shadow-xs animate-glow-rose">
             <AlertTriangle size={13} className="text-rose-600 animate-pulse" />
             <span className="font-extrabold font-mono text-rose-900">{criticalCount}</span>
             <span className="text-rose-700">critical</span>

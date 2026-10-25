@@ -121,10 +121,10 @@ const CATEGORY_COLORS = ['#3b82f6','#f59e0b','#ef4444','#10b981','#8b5cf6','#06b
 function KpiCard({ icon: Icon, label, value, sub, color, bg, accent, highlightKey }) {
   const highlighted = Boolean(highlightKey);
   return (
-    <div key={label} className={`kpi-card border-t-4 transition-all duration-200 hover:scale-[1.02] hover:shadow-md ${highlighted ? 'ring-2 ring-blue-500 animate-[pulse_1.5s_ease-in-out_1]' : ''}`} style={{ borderTopColor: accent }}>
+    <div key={label} className={`kpi-card interactive-card border-t-4 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${highlighted ? 'ring-2 ring-blue-500 animate-[pulse_1.5s_ease-in-out_1]' : ''}`} style={{ borderTopColor: accent }}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</span>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: bg + '18' }}>
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform duration-200 hover:scale-110" style={{ background: bg + '18' }}>
           <Icon size={16} style={{ color: bg }} />
         </div>
       </div>
@@ -137,7 +137,7 @@ function KpiCard({ icon: Icon, label, value, sub, color, bg, accent, highlightKe
 function AlertRow({ g, onSelect, highlighted }) {
   const color = SEVERITY_COLOR(g.severity_score);
   const severityClass = g.severity_score >= 8
-    ? 'bg-rose-100 text-rose-800 border-rose-200'
+    ? 'bg-rose-100 text-rose-800 border-rose-200 animate-glow-rose'
     : g.severity_score >= 6
       ? 'bg-amber-100 text-amber-800 border-amber-200'
       : 'bg-emerald-100 text-emerald-800 border-emerald-200';
@@ -145,8 +145,8 @@ function AlertRow({ g, onSelect, highlighted }) {
   const unverified = isUnverified(g.authenticity_flag);
   return (
     <div
-      className={`flex items-start gap-2.5 p-2.5 rounded-lg cursor-pointer transition-all border ${
-        highlighted ? 'bg-blue-50/80 border-blue-600 border-l-4 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+      className={`flex items-start gap-2.5 p-2.5 rounded-xl cursor-pointer transition-all border ${
+        highlighted ? 'bg-blue-50/80 border-blue-600 border-l-4 shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50 hover:-translate-y-0.5 hover:shadow-sm'
       }`}
       onClick={() => onSelect(g)}
     >

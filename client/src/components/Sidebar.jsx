@@ -48,14 +48,17 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
     if (key === 'live') {
       return (
         <span
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition-colors ${
             isActive
-              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-xs'
               : 'bg-cyan-950/60 text-cyan-400 border-cyan-800/50'
           }`}
           title={`${realtimeCount} live real-time reports ingested`}
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse flex-shrink-0" />
+          <span className="relative flex h-2 w-2 items-center justify-center">
+            <span className="animate-radar-pulse absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400"></span>
+          </span>
           <span>{realtimeCount > 0 ? `${realtimeCount} Live` : 'Live'}</span>
         </span>
       );
@@ -81,10 +84,10 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
       if (unverifiedCount === 0) return null;
       return (
         <span
-          className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono border transition-colors ${
+          className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono border transition-all ${
             isActive
               ? 'bg-amber-400/20 text-amber-300 border-amber-400/40 shadow-sm'
-              : 'bg-amber-950/60 text-amber-400 border-amber-800/60 animate-pulse'
+              : 'bg-amber-950/60 text-amber-400 border-amber-800/60 animate-glow-amber'
           }`}
           title={`${unverifiedCount} reports pending human verification review`}
         >
@@ -97,10 +100,10 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
       if (criticalCount === 0) return null;
       return (
         <span
-          className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono border transition-colors ${
+          className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono border transition-all ${
             isActive
               ? 'bg-rose-500/25 text-rose-200 border-rose-400/40'
-              : 'bg-rose-950/70 text-rose-300 border-rose-800/60'
+              : 'bg-rose-950/70 text-rose-300 border-rose-800/60 animate-glow-rose'
           }`}
           title={`${criticalCount} high-severity civic emergencies requiring dispatch`}
         >
@@ -119,10 +122,10 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
       <div>
         <div className="px-5 py-4 border-b border-slate-800/80 bg-gradient-to-b from-slate-900/60 to-transparent">
           <div className="flex items-center gap-3">
-            <div className="relative p-1.5 rounded-xl bg-slate-900 border border-slate-800 shadow-inner flex-shrink-0">
-              <JanSunoLogo className="w-7 h-7 flex-shrink-0" />
+            <div className="relative p-1.5 rounded-xl bg-slate-900 border border-slate-800 shadow-inner flex-shrink-0 group-hover:border-slate-700 transition-colors">
+              <JanSunoLogo className="w-7 h-7 flex-shrink-0 transition-transform duration-300 hover:scale-110" />
               <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="animate-radar-pulse absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
             </div>
@@ -156,20 +159,20 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
                     onClick={() => onNavigate(id)}
                     className={`group relative flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer w-full text-left ${
                       isActive
-                        ? 'bg-gradient-to-r from-blue-600/25 via-indigo-600/15 to-transparent text-white border-l-2 border-amber-400 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]'
+                        ? 'bg-gradient-to-r from-blue-600/25 via-indigo-600/15 to-transparent text-white border-l-2 border-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.18)]'
                         : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60 active:scale-[0.99]'
                     }`}
                   >
-                    <div className={`p-1 rounded-lg transition-colors ${
+                    <div className={`p-1 rounded-lg transition-transform duration-200 group-hover:scale-110 ${
                       isActive
                         ? 'bg-amber-400/15 text-amber-400'
                         : 'text-slate-500 group-hover:text-slate-300 group-hover:bg-slate-800/50'
                     }`}>
                       <Icon size={15} className="flex-shrink-0" />
                     </div>
-                    <span className="flex-1 truncate tracking-tight">{label}</span>
+                    <span className="flex-1 truncate tracking-tight group-hover:translate-x-0.5 transition-transform duration-150">{label}</span>
                     {renderBadge(badgeKey, isActive)}
-                    {isActive && <ChevronRight size={12} className="text-amber-400/80 flex-shrink-0" />}
+                    {isActive && <ChevronRight size={12} className="text-amber-400/80 flex-shrink-0 animate-pulse" />}
                   </button>
                 );
               })}

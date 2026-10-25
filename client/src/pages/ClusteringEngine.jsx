@@ -37,7 +37,7 @@ function ClusterCard({ cluster, grievances, onSelectGrievance }) {
   const maxSev  = cluster.max_severity;
   const sevColor = SEVERITY_COLOR(maxSev);
   return (
-    <div className="card overflow-hidden transition-all duration-200 hover:shadow-md hover:border-slate-300">
+    <div className="card interactive-card animate-fade-slide-up overflow-hidden rounded-2xl border border-slate-200/90 hover:border-indigo-400">
       <div className="flex items-start gap-4 p-4 cursor-pointer hover:bg-slate-50 transition-colors"
         onClick={() => setExpanded(e => !e)}>
         <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border"
