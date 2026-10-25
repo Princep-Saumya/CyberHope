@@ -63,6 +63,23 @@ function persistRecord(record) {
   });
 }
 
+function sanitizeSourceUrl(url, platform) {
+  if (!url || typeof url !== 'string') return url;
+  const trimmed = url.trim();
+  if (platform === 'Reddit' || /reddit\.com/i.test(trimmed)) {
+    const match = /reddit\.com\/r\/([^/]+)\/comments\/([^/?#]+)/i.exec(trimmed);
+    if (match) {
+      const subreddit = match[1] || 'bihar';
+      const idOrSlug = match[2];
+      if (!/^[0-9a-zA-Z]{5,8}$/.test(idOrSlug)) {
+        const query = idOrSlug.replace(/[_-]+/g, ' ').trim();
+        return `https://www.reddit.com/r/${subreddit}/search/?q=${encodeURIComponent(query)}&restrict_sr=1`;
+      }
+    }
+  }
+  return trimmed;
+}
+
 function initStore() {
   if (isInitialized) return grievanceStore;
 
@@ -71,6 +88,9 @@ function initStore() {
       const record = JSON.parse(row.record_json);
       if (Array.isArray(record.coordinates) && record.coordinates.length >= 2) {
         record.coordinates = { lat: record.coordinates[0], lng: record.coordinates[1] };
+      }
+      if (record.source_url) {
+        record.source_url = sanitizeSourceUrl(record.source_url, record.platform);
       }
       return record;
     } catch (error) {
@@ -229,6 +249,9 @@ function fetchGrievances(filters = {}) {
 }
 
 function addGrievance(newRecord) {
+  if (newRecord.source_url) {
+    newRecord.source_url = sanitizeSourceUrl(newRecord.source_url, newRecord.platform);
+  }
   const existing = grievanceStore.find(
     g => (g.source_url && g.source_url === newRecord.source_url) || g.id === newRecord.id
   );

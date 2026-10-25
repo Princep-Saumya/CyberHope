@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { formatDateTime } from '../utils/dateUtils';
 import { isFlaggedSuspicious, isUnverified } from '../utils/verification';
+import { getSafeSourceUrl } from '../utils/urlUtils';
 
 const STATUS_FLOW = ['Received', 'Assigned', 'Under Investigation', 'Resolved', 'Closed'];
 const STATUS_CFG  = {
@@ -108,6 +109,7 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
     return '';
   };
   const locationText = `${grievance.location_tagged || 'Location unverified'}${grievance.coordinates_approximate ? ' (approx.)' : ''}${getCoordinatesText()}`;
+  const safeSourceUrl = getSafeSourceUrl(grievance.source_url, grievance.platform);
 
   const modal = (
     <div
@@ -168,9 +170,9 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
               <span className="inline-flex items-center gap-1.5">
                 <MapPin size={14} className="text-slate-600" /> {locationText}
               </span>
-              {grievance.source_url ? (
+              {safeSourceUrl ? (
                 <a
-                  href={grievance.source_url}
+                  href={safeSourceUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-colors"
@@ -206,9 +208,9 @@ export default function ResolutionModal({ grievance, clusterSiblings, onClose, o
                   className="w-full max-h-64 object-cover"
                   onError={e => { e.currentTarget.style.display = 'none'; }}
                 />
-                {grievance.source_url && (
+                {safeSourceUrl && (
                   <a
-                    href={grievance.source_url}
+                    href={safeSourceUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="absolute top-2.5 right-2.5 px-3 py-1 text-xs font-semibold text-white bg-slate-900/80 hover:bg-slate-900 rounded-lg flex items-center gap-1.5 backdrop-blur border border-white/20 transition-all shadow-md"

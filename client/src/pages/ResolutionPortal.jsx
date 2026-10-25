@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { formatDateTime, formatDistanceToNow } from '../utils/dateUtils';
+import { getSafeSourceUrl } from '../utils/urlUtils';
 
 const STATUS_FLOW = ['Received', 'Assigned', 'Under Investigation', 'Resolved', 'Closed'];
 const SLA_HOURS   = { Received: 4, Assigned: 24, 'Under Investigation': 72, Resolved: 0, Closed: 0, 'Escalated to DM': 0 };
@@ -247,9 +248,9 @@ function ResolutionDetailModal({ grievance, onClose, onUpdate, onEscalate }) {
                   className="w-full h-full object-cover max-h-60"
                   onError={e => { e.target.style.display = 'none'; }}
                 />
-                {grievance.source_url && (
+                {getSafeSourceUrl(grievance.source_url, grievance.platform) && (
                   <a
-                    href={grievance.source_url}
+                    href={getSafeSourceUrl(grievance.source_url, grievance.platform)}
                     target="_blank"
                     rel="noreferrer"
                     className="absolute top-2 right-2 px-3 py-1 text-xs font-semibold text-white bg-slate-900/80 hover:bg-slate-900 rounded-lg flex items-center gap-1.5 backdrop-blur shadow"

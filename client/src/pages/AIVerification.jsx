@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow, formatDateTime } from '../utils/dateUtils';
 import { isFlaggedSuspicious, isUnverified } from '../utils/verification';
+import { getSafeSourceUrl } from '../utils/urlUtils';
 
 // ── Platform Badges with Dedicated Color Accents ────────────────────────────
 const PLATFORM_ICONS = {
@@ -548,9 +549,9 @@ function ForensicAnalysisModal({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {grievance.source_url && (
+            {getSafeSourceUrl(grievance.source_url, grievance.platform) && (
               <a
-                href={grievance.source_url}
+                href={getSafeSourceUrl(grievance.source_url, grievance.platform)}
                 target="_blank"
                 rel="noreferrer"
                 className="btn-secondary text-xs py-1.5 px-3 rounded-xl flex items-center gap-1.5 text-sky-700 hover:text-sky-900 bg-sky-50/70 border-sky-200 hover:bg-sky-100"
@@ -675,9 +676,9 @@ function ForensicAnalysisModal({
                         <Radio size={12} /> REDDIT DISCUSSION
                       </span>
                     )}
-                    {grievance.source_url && (
+                    {getSafeSourceUrl(grievance.source_url, grievance.platform) && (
                       <a
-                        href={grievance.source_url}
+                        href={getSafeSourceUrl(grievance.source_url, grievance.platform)}
                         target="_blank"
                         rel="noreferrer"
                         className="absolute top-2 right-2 px-2.5 py-1 text-xs font-semibold text-white bg-slate-900/80 hover:bg-slate-900 rounded-lg flex items-center gap-1 backdrop-blur shadow"
