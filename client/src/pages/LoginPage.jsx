@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowRight, Building2, LockKeyhole, Mail, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { DEMO_ACCOUNTS } from '../auth/demoAccounts';
+import loginBg from '../assets/login-bg.jpg';
 
 export default function LoginPage() {
   const { signIn } = useAuth();
@@ -33,9 +34,22 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#F5F3EF] p-4">
-      <section className="grid w-full max-w-3xl grid-cols-1 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-xl md:grid-cols-2">
-        <div className="flex flex-col justify-center bg-white p-6 sm:p-7">
+    <main className="relative flex min-h-screen items-center justify-center p-4 overflow-hidden select-none">
+      {/* Background Image Layer */}
+      <div
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${loginBg})` }}
+        aria-hidden="true"
+      />
+
+      {/* Atmospheric Gradient & Glass Overlay */}
+      <div
+        className="fixed inset-0 bg-gradient-to-b from-slate-950/40 via-slate-950/20 to-slate-950/60 backdrop-blur-[0.5px]"
+        aria-hidden="true"
+      />
+
+      <section className="relative z-10 grid w-full max-w-3xl grid-cols-1 overflow-hidden rounded-2xl border border-white/20 bg-white/95 backdrop-blur-xl shadow-2xl shadow-black/50 md:grid-cols-2">
+        <div className="flex flex-col justify-center bg-white/95 p-6 sm:p-7">
           <div>
             <div className="mb-6 flex items-center gap-2">
               <ShieldCheck className="h-6 w-6 text-stone-900" />
@@ -104,7 +118,7 @@ export default function LoginPage() {
 
         </div>
 
-        <div className="flex flex-col justify-between border-t border-stone-200 bg-[#FAF8F5] p-6 sm:p-7 md:border-l md:border-t-0">
+        <div className="flex flex-col justify-between border-t border-stone-200/80 bg-[#FAF8F5]/90 p-6 sm:p-7 md:border-l md:border-t-0">
           <div>
             <div className="mb-4 flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-stone-500">
