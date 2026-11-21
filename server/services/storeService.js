@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
-const { clusterGrievances, getMasterTickets } = require('../utils/clustering');
+const { DERIVED_DATA_VERSION, clusterGrievances, getMasterTickets } = require('../utils/clustering');
 const { VERIFIED_GENUINE_FLAG, FLAGGED_SUSPICIOUS_FLAG } = require('../utils/verification');
 const { matchesHashtagFilter } = require('../utils/feedSearch');
 
@@ -18,7 +18,7 @@ fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
 const database = new Database(databasePath);
 database.pragma('journal_mode = WAL');
-database.pragma('busy_timeout = 5000');
+database.pragma('busy_timeout = 3000');
 database.exec(`
   CREATE TABLE IF NOT EXISTS grievances (
     id TEXT PRIMARY KEY,
@@ -180,8 +180,10 @@ function initStore() {
     }
   }
 
-  grievanceStore = clusterGrievances(grievanceStore);
-  persistRecords(grievanceStore);
+  if (grievanceStore.some(record => record.derived_data_version !== DERIVED_DATA_VERSION)) {
+    grievanceStore = clusterGrievances(grievanceStore);
+    persistRecords(grievanceStore);
+  }
   isInitialized = true;
   console.log(`✅ SQLite store initialized (${grievanceStore.length} persisted records, Reddit active)`);
   return grievanceStore;
@@ -216,8 +218,8 @@ function findDuplicateGrievance({ id, source_url, source_id, platform }) {
 }
 
 function compareByNewestTimestamp(a, b) {
-  const aTimestamp = Date.parse(a.timestamp);
-  const bTimestamp = Date.parse(b.timestamp);
+  const aTimestamp = Date.parse(a.created_at || a.imported_at || a.timestamp);
+  const bTimestamp = Date.parse(b.created_at || b.imported_at || b.timestamp);
   if (!Number.isFinite(aTimestamp)) return Number.isFinite(bTimestamp) ? 1 : 0;
   if (!Number.isFinite(bTimestamp)) return -1;
   return bTimestamp - aTimestamp;
@@ -450,6 +452,55 @@ function recordVerification(id, { verdict, notes = '', officer_id = 'CyberCell_O
   return grievanceStore[idx];
 }
 
+function approveGrievanceForDispatch(id, { notes = '', officer_id = 'CyberCell_Officer_01' }) {
+  const idx = grievanceStore.findIndex(record => record.id === id);
+  if (idx === -1) return null;
+
+  const current = grievanceStore[idx];
+  if (current.officer_verdict === 'Confirmed Fake') {
+    const error = new Error('A report confirmed as fake cannot be approved for Department Dispatch.');
+    error.status = 409;
+    throw error;
+  }
+  if (current.dispatch_approved_at) return current;
+
+  const timestamp = new Date().toISOString();
+  const officerNotes = notes.trim() || 'Operator approved this report for internal Department Dispatch.';
+  const updatedRecord = {
+    ...current,
+    authenticity_flag: VERIFIED_GENUINE_FLAG,
+    authenticity_risk_score: Math.min(current.authenticity_risk_score || 15, 20),
+    officer_verdict: 'Verified Genuine',
+    officer_notes: officerNotes,
+    verified_at: timestamp,
+    verified_by: officer_id,
+    dispatch_approved_at: timestamp,
+    dispatch_approved_by: officer_id,
+    dispatch_created_at: timestamp,
+    status: 'Received',
+    audit_log: [
+      ...(current.audit_log || []),
+      {
+        action: 'officer_verification',
+        verdict: 'Verified Genuine',
+        notes: officerNotes,
+        officer_id,
+        timestamp,
+      },
+      {
+        action: 'DISPATCH_APPROVED',
+        timestamp,
+        by: officer_id,
+        note: 'Operator approved the report for the internal Department Dispatch queue. No external dispatch was sent.',
+      },
+    ],
+  };
+
+  grievanceStore[idx] = updatedRecord;
+  persistRecord(updatedRecord);
+  return updatedRecord;
+}
+
 function calcStats(records) {
   const allRecords = records || grievanceStore;
   const clusters = getMasterTickets(allRecords);
@@ -464,6 +515,12 @@ function calcStats(records) {
     realtime_ingested: realTimeFeedCount,
     reference_records: allRecords.filter(r => r.is_reference_record).length,
     critical: allRecords.filter(g => g.severity_score >= 8).length,
+    urgent_pending_dispatch: allRecords.filter(g =>
+      g.severity_score >= 8
+      && g.status === 'Received'
+      && !g.dispatch_approved_at
+      && g.officer_verdict !== 'Confirmed Fake'
+    ).length,
     duplicates_clustered: duplicatesCount,
     cluster_count: clusters.length,
     genuine: allRecords.filter(g => g.authenticity_flag === VERIFIED_GENUINE_FLAG).length,
@@ -514,5 +571,6 @@ module.exports = {
   recordAcknowledgment,
   updateGrievanceAnalysis,
   recordVerification,
+  approveGrievanceForDispatch,
   calcStats,
 };

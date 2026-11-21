@@ -21,11 +21,13 @@ const {
   recordAcknowledgment,
   updateGrievanceAnalysis,
   recordVerification,
+  approveGrievanceForDispatch,
   calcStats,
 } = require('../services/storeService');
 const { getPollerStatus, triggerManualPoll } = require('../services/realTimePoller');
 const { startReanalysisJob, getReanalysisJob } = require('../services/reanalysisJobService');
 const { createRateLimit } = require('../middleware/rateLimit');
+const { getQuickFilterCounts } = require('../utils/feedSearch');
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -112,6 +114,15 @@ router.get('/grievances', (req, res) => {
     res.json({ count: results.length, data: results });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/grievances/quick-filter-counts', (_req, res) => {
+  try {
+    res.json({ counts: getQuickFilterCounts(fetchGrievances()) });
+  } catch (err) {
+    console.error('Failed to calculate quick-filter counts:', err);
+    res.status(500).json({ error: 'Quick-filter counts could not be calculated.' });
   }
 });
 
@@ -418,6 +429,31 @@ router.post('/grievances/:id/verify', (req, res) => {
   }
 
   res.json({ success: true, record });
+});
+
+router.post('/grievances/:id/dispatch-approval', (req, res) => {
+  const { notes = '', officer_id = 'CyberCell_Officer_01' } = req.body || {};
+  if (typeof notes !== 'string' || notes.length > 2000) {
+    return res.status(400).json({ error: 'notes must be a string of at most 2000 characters.' });
+  }
+  if (typeof officer_id !== 'string' || !officer_id.trim() || officer_id.length > 100) {
+    return res.status(400).json({ error: 'officer_id must be a non-empty string of at most 100 characters.' });
+  }
+
+  try {
+    const record = approveGrievanceForDispatch(req.params.id, { notes, officer_id: officer_id.trim() });
+    if (!record) return res.status(404).json({ error: 'Grievance not found' });
+
+    const stats = calcStats();
+    if (req.io) {
+      req.io.emit('grievance_dispatch_approved', { record, stats });
+      req.io.emit('stats_updated', { stats });
+    }
+
+    res.json({ success: true, record });
+  } catch (error) {
+    res.status(error.status || 500).json({ error: error.message });
+  }
 });
 
 module.exports = router;

@@ -37,6 +37,7 @@ function AuthenticatedApp() {
   const [simulationCooldown, setSimulationCooldown] = useState(false);
   const pollLock = useRef(false);
   const simulationLock = useRef(false);
+  const feedScrollPending = useRef(false);
   const cooldownTimers = useRef({ poll: null, simulation: null, highlight: null });
 
   const {
@@ -44,9 +45,9 @@ function AuthenticatedApp() {
     grievances, stats, clusters, unlocatedRecords, excludedNonCivicCount,
     loading, error,
     selectedGrievance, setSelectedGrievance,
-    updateGrievanceStatus, assignGrievanceLocation, escalateGrievance, verifyGrievance, reanalyzeAllGrievances, addSampleReport, importPublicSourceItem, reanalyzeGrievance,
+    updateGrievanceStatus, assignGrievanceLocation, escalateGrievance, verifyGrievance, approveGrievanceForDispatch, reanalyzeAllGrievances, addSampleReport, importPublicSourceItem, reanalyzeGrievance,
     getClusterSiblings,
-    isSocketConnected,
+    socketStatus,
     realtimeNotification,
     clearNotification,
     triggerRealtimePoll,
@@ -55,6 +56,7 @@ function AuthenticatedApp() {
   const [simulatingPost, setSimulatingPost] = useState(false);
   const [actionNotice, setActionNotice] = useState(null);
   const [highlightedReportId, setHighlightedReportId] = useState(null);
+  const [feedScrollRequest, setFeedScrollRequest] = useState(0);
 
   useEffect(() => () => {
     clearTimeout(cooldownTimers.current.poll);
@@ -67,6 +69,18 @@ function AuthenticatedApp() {
     const timer = setTimeout(() => setActionNotice(null), 7000);
     return () => clearTimeout(timer);
   }, [actionNotice]);
+
+  useEffect(() => {
+    if (!feedScrollPending.current || activePage !== 'osint' || !highlightedReportId) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const target = [...document.querySelectorAll('[data-report-id]')]
+        .find(element => element.dataset.reportId === highlightedReportId);
+      if (!target) return;
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      feedScrollPending.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activePage, feedScrollRequest, highlightedReportId, grievances]);
 
   // Auto-dismiss real-time toast after 10s
   useEffect(() => {
@@ -101,6 +115,20 @@ function AuthenticatedApp() {
     }
   }, [triggerRealtimePoll]);
 
+  const handleShowInFeed = useCallback((record) => {
+    if (!record?.id) return;
+    resetFilters();
+    setGlobalSearch('');
+    setSelectedGrievance(null);
+    setActivePage('osint');
+    setHighlightedReportId(record.id);
+    feedScrollPending.current = true;
+    setFeedScrollRequest(request => request + 1);
+    clearTimeout(cooldownTimers.current.highlight);
+    cooldownTimers.current.highlight = setTimeout(() => setHighlightedReportId(null), 3000);
+    setActionNotice(null);
+  }, [resetFilters, setSelectedGrievance]);
+
   const handleSimulatePost = useCallback(async () => {
     if (simulationLock.current) return;
     simulationLock.current = true;
@@ -117,11 +145,7 @@ function AuthenticatedApp() {
         coordinates: { lat: 25.5941, lng: 85.1456 },
         hashtags: ['#BSPHCL', '#Kankarbagh', '#Patna'],
       });
-      setHighlightedReportId(result.record.id);
-      clearTimeout(cooldownTimers.current.highlight);
-      cooldownTimers.current.highlight = setTimeout(() => setHighlightedReportId(null), 5000);
-      setGlobalSearch('');
-      setActivePage('dashboard');
+      handleShowInFeed(result.record);
       setActionNotice({
         type: 'success',
         title: 'New simulated grievance added',
@@ -135,19 +159,43 @@ function AuthenticatedApp() {
       setSimulatingPost(false);
       simulationLock.current = false;
     }
-  }, [addSampleReport]);
+  }, [addSampleReport, handleShowInFeed]);
 
   const handleImportSourceItem = useCallback(async (item) => {
     const result = await importPublicSourceItem(item);
+    if (result.duplicate) {
+      setActionNotice({ type: 'info', text: 'This source item is already in the grievance records.' });
+    } else {
+      handleShowInFeed(result.record);
+      setActionNotice({
+        type: 'success',
+        title: 'Report added',
+        text: `Source item analyzed and added · ${result.record.department}`,
+        mode: result.record.analysis_mode,
+        ticket: result.record,
+      });
+    }
+    return result;
+  }, [handleShowInFeed, importPublicSourceItem]);
+
+  const handleAddDemoSample = useCallback(async (item) => {
+    const hashtags = [...new Set((item.text?.match(/#[\p{L}\p{N}_]+/gu) || []))];
+    const result = await addSampleReport({
+      post_text: item.text || item.title,
+      platform: 'Sample Entry',
+      author_handle: item.author || '@curated_sample',
+      hashtags,
+    });
+    handleShowInFeed(result.record);
     setActionNotice({
       type: 'success',
-      text: result.duplicate
-        ? 'This source item is already in the grievance records.'
-        : `Source item analyzed and added · ${result.record.department}`,
-      mode: result.record.analysis_mode,
+      title: 'Sample report added',
+      text: result.record.post_text,
+      mode: result.analysis.analysis_mode,
+      ticket: result.record,
     });
     return result;
-  }, [importPublicSourceItem]);
+  }, [addSampleReport, handleShowInFeed]);
 
   const handleGlobalSearch = useCallback((val) => {
     setGlobalSearch(val);
@@ -180,16 +228,15 @@ function AuthenticatedApp() {
 
   const handleViewActionTicket = useCallback(() => {
     if (!actionNotice?.ticket) return;
-    setSelectedGrievance(actionNotice.ticket);
-    setActionNotice(null);
-  }, [actionNotice, setSelectedGrievance]);
+    handleShowInFeed(actionNotice.ticket);
+  }, [actionNotice, handleShowInFeed]);
 
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard':
         return <ExecutiveDashboard grievances={grievances} stats={stats} clusters={clusters} onSelectGrievance={setSelectedGrievance} highlightedReportId={highlightedReportId} />;
       case 'osint':
-        return <OSINTSearch filters={filters} onFilterChange={updateFilter} onReset={handleResetFilters} grievances={grievances} loading={loading} onSelectGrievance={setSelectedGrievance} onImportSourceItem={handleImportSourceItem} />;
+        return <OSINTSearch filters={filters} onFilterChange={updateFilter} onReset={handleResetFilters} grievances={grievances} loading={loading} highlightedReportId={highlightedReportId} onSelectGrievance={setSelectedGrievance} onImportSourceItem={handleImportSourceItem} onAddDemoSample={handleAddDemoSample} />;
       case 'clusters':
         return <ClusteringEngine clusters={clusters} unlocatedRecords={unlocatedRecords} totalRecords={stats?.total ?? grievances.length} excludedNonCivicCount={excludedNonCivicCount} onSelectGrievance={setSelectedGrievance} onAssignLocation={assignGrievanceLocation} />;
       case 'ai':
@@ -199,6 +246,7 @@ function AuthenticatedApp() {
             selectedGrievanceId={selectedVerificationId}
             onReanalyze={reanalyzeGrievance}
             onVerify={verifyGrievance}
+            onApproveForDispatch={approveGrievanceForDispatch}
             onReanalyzeAll={reanalyzeAllGrievances}
             batchAuditProgress={batchAuditProgress}
           />
@@ -228,7 +276,7 @@ function AuthenticatedApp() {
           onSimulatePost={handleSimulatePost}
           simulatingPost={simulatingPost}
           simulateDisabled={simulatingPost || simulationCooldown}
-          isSocketConnected={isSocketConnected}
+          socketStatus={socketStatus}
           onPollRealtime={handlePollRealtime}
           pollingRealtime={pollingRealtime}
           pollDisabled={pollingRealtime || pollCooldown}
@@ -274,7 +322,7 @@ function AuthenticatedApp() {
             </p>
             {actionNotice.ticket ? (
               <button type="button" onClick={handleViewActionTicket} className="mt-2 text-xs font-semibold text-blue-700 hover:text-blue-900 hover:underline">
-                View Ticket
+                View in Feed
               </button>
             ) : <p className="mt-1 text-xs opacity-75">This notice closes automatically.</p>}
           </div>

@@ -29,6 +29,7 @@ function getGroqStatus() {
       ? 'not-configured'
       : groqLastFailure?.status || 'ready',
     reason: groqLastFailure?.reason || (!configured ? 'GROQ_API_KEY not configured in server/.env' : null),
+    error_status: groqLastFailure?.error_status || null,
     last_failure_at: groqLastFailure?.last_failure_at || null,
     next_retry_at: groqCooldownUntil > Date.now() ? new Date(groqCooldownUntil).toISOString() : null,
     daily_request_limit: GROQ_DAILY_REQUEST_LIMIT,
@@ -38,12 +39,23 @@ function getGroqStatus() {
   };
 }
 
-function recordFailure(status, reason) {
+function recordFailure(status, reason, error) {
   groqLastFailure = {
     status,
     reason,
+    error_status: Number.isInteger(error?.status) ? error.status : null,
     last_failure_at: new Date().toISOString(),
   };
+}
+
+function describeFailure(error) {
+  if (error.status === 400) return 'Groq rejected the request; verify GROQ_MODEL and the request settings.';
+  if (error.status === 401 || error.status === 403) return 'Groq rejected the credentials or API permissions; verify GROQ_API_KEY and project access.';
+  if (error.status === 404) return 'Groq could not find the requested model or endpoint; verify GROQ_MODEL.';
+  if (error.status >= 500) return `Groq returned a provider error (HTTP ${error.status}).`;
+  if (error.name === 'TimeoutError') return 'The Groq request timed out before the provider responded.';
+  if (error.name === 'TypeError') return 'The server could not reach Groq; check outbound network, DNS, and TLS connectivity.';
+  return 'Groq could not complete this request; a secondary provider or local fallback will be used.';
 }
 
 function getRetryDelayMs(error, response) {
@@ -147,7 +159,8 @@ async function performRequest(prompt) {
           error.status === 429 ? 'rate-limited' : 'unavailable',
           error.status === 429
             ? 'Groq rate-limited this request; a secondary provider or local fallback will be used.'
-            : 'Groq could not complete this request; a secondary provider or local fallback will be used.',
+            : describeFailure(error),
+          error,
         );
         throw error;
       }

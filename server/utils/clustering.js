@@ -8,6 +8,7 @@ const SPAM_SIMILARITY_THRESHOLD = 0.92;
 const INCIDENT_WINDOW_MS = 72 * 60 * 60 * 1000;
 const CHRONIC_HOTSPOT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const { extractBiharLocation } = require('./biharGeoResolver');
+const DERIVED_DATA_VERSION = 1;
 const GENERIC_HASHTAGS = new Set([
   '#bihar', '#biharflood', '#floodreliefbihar', '#biharroadproblem',
   '#biharnews', '#india', '#viral', '#trending', '#news',
@@ -321,6 +322,7 @@ function markChronicHotspots(records) {
 function clusterGrievances(records) {
   const result = records.map(record => ({
     ...extractBiharLocation(record),
+    derived_data_version: DERIVED_DATA_VERSION,
     is_civic_relevant: !isLowSeverityNonCivic(record),
     cluster_exclusion_reason: isLowSeverityNonCivic(record) ? 'low_severity_non_civic' : null,
     duplicate_cluster_id: null,
@@ -465,6 +467,7 @@ module.exports = {
   scoreIncidentPair,
   hashtagOverlap,
   hasUsableLocation,
+  DERIVED_DATA_VERSION,
   clusterGrievances,
   getMasterTickets,
 };

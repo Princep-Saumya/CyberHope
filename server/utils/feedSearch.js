@@ -11,6 +11,7 @@ const QUICK_FILTER_KEYWORDS = {
     ['water', 'supply'], ['पानी'], ['पेयजल'], ['जल', 'संकट'],
   ],
 };
+const QUICK_FILTER_KEYS = ['bpsc', 'patnafloods', 'rcdbihar', 'poweroutage', 'watercrisis'];
 
 function getSearchableGrievanceText(record) {
   const values = [
@@ -35,6 +36,29 @@ function getSearchableGrievanceText(record) {
     .replace(/#/g, ' ');
 }
 
+function normalizePublicSearchQuery(query) {
+  return String(query || '')
+    .normalize('NFKC')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+    .replace(/["'`]/g, '')
+    .replace(/#/g, ' ')
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchesLocalSearch(record, query) {
+  const searchText = getSearchableGrievanceText(record);
+  const normalizedQuery = normalizePublicSearchQuery(query).toLocaleLowerCase();
+  if (!normalizedQuery) return false;
+  const compactQuery = normalizedQuery.replace(/[^\p{L}\p{N}]/gu, '');
+  const compactText = searchText.replace(/[^\p{L}\p{N}]/gu, '');
+  if (compactText.includes(compactQuery)) return true;
+  const terms = normalizedQuery.split(/\s+/).filter(term => term.length > 1);
+  return terms.length > 0 && terms.every(term => searchText.includes(term));
+}
+
 function matchesHashtagFilter(record, query) {
   const text = getSearchableGrievanceText(record);
   const queries = String(query || '')
@@ -51,4 +75,16 @@ function matchesHashtagFilter(record, query) {
   });
 }
 
-module.exports = { matchesHashtagFilter };
+function getQuickFilterCounts(records) {
+  return Object.fromEntries(QUICK_FILTER_KEYS.map(key => [
+    key,
+    records.filter(record => matchesHashtagFilter(record, key)).length,
+  ]));
+}
+
+module.exports = {
+  getQuickFilterCounts,
+  matchesHashtagFilter,
+  matchesLocalSearch,
+  normalizePublicSearchQuery,
+};

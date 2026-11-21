@@ -25,6 +25,8 @@ export const api = {
     return request(`/grievances${qs ? `?${qs}` : ''}`, options);
   },
 
+  getQuickFilterCounts: (options = {}) => request('/grievances/quick-filter-counts', options),
+
   // GET /api/grievances/:id
   getGrievance: (id) => request(`/grievances/${id}`),
 
@@ -71,9 +73,10 @@ export const api = {
   getPublicSourceStatus: () => request('/sources/status'),
   getOsintTaxonomy: () => request('/sources/taxonomy'),
 
-  searchPublicSource: (source, query) => {
+  searchPublicSource: (source, query, sectorId = '', options = {}) => {
     const params = new URLSearchParams({ source, q: query });
-    return request(`/sources/search?${params}`);
+    if (sectorId) params.set('sector', sectorId);
+    return request(`/sources/search?${params}`, options);
   },
 
   importPublicSourceItem: (item) =>
@@ -83,10 +86,10 @@ export const api = {
     }),
 
   // GET /api/clusters
-  getClusters: () => request('/clusters'),
+  getClusters: (options = {}) => request('/clusters', options),
 
   // GET /api/stats
-  getStats: () => request('/stats'),
+  getStats: (options = {}) => request('/stats', options),
 
   // GET /api/health
   health: () => request('/health'),
@@ -107,6 +110,12 @@ export const api = {
     request(`/grievances/${id}/verify`, {
       method: 'POST',
       body: JSON.stringify({ verdict, notes, officer_id }),
+    }),
+
+  approveGrievanceForDispatch: (id, { notes, officer_id }) =>
+    request(`/grievances/${id}/dispatch-approval`, {
+      method: 'POST',
+      body: JSON.stringify({ notes, officer_id }),
     }),
 
   // POST /api/realtime/reanalyze-all — start a bounded background AI re-analysis job

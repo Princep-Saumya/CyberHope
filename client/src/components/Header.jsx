@@ -40,7 +40,7 @@ export default function Header({
   onSimulatePost,
   simulatingPost,
   simulateDisabled,
-  isSocketConnected,
+  socketStatus,
   onPollRealtime,
   pollingRealtime,
   pollDisabled,
@@ -121,12 +121,20 @@ export default function Header({
             <h1 className="truncate text-sm font-extrabold tracking-tight text-slate-900 sm:text-base">{pageTitle}</h1>
             <span
               className={`mt-0.5 inline-flex items-center gap-1.5 text-[10px] font-semibold ${
-                isSocketConnected ? 'text-emerald-700' : 'text-amber-700'
+                socketStatus === 'connected' ? 'text-emerald-700' : 'text-amber-700'
               }`}
-              title={isSocketConnected ? 'Real-time WebSocket feed listener is connected' : 'Connecting to live telemetry socket...'}
+              title={socketStatus === 'connected'
+                ? 'Real-time WebSocket feed listener is connected'
+                : socketStatus === 'reconnecting'
+                  ? 'Real-time feed is reconnecting; initial reports load independently.'
+                  : 'Connecting to live telemetry socket...'}
             >
-              <span className={`h-1.5 w-1.5 rounded-full ${isSocketConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-              {isSocketConnected ? 'Live feed connected' : 'Connecting to live feed'}
+              <span className={`h-1.5 w-1.5 rounded-full ${socketStatus === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              {socketStatus === 'connected'
+                ? 'Live feed connected'
+                : socketStatus === 'reconnecting'
+                  ? 'Live feed reconnecting'
+                  : 'Connecting to live feed'}
             </span>
           </div>
         </div>

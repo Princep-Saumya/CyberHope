@@ -7,9 +7,10 @@ import {
 import { api } from '../services/api';
 import { formatDateTime, formatDistanceToNow } from '../utils/dateUtils';
 import { getSafeSourceUrl } from '../utils/urlUtils';
+import { getSlaInfo } from '../utils/resolutionSla';
 
 const STATUS_FLOW = ['Received', 'Assigned', 'Under Investigation', 'Resolved', 'Closed'];
-const SLA_HOURS   = { Received: 4, Assigned: 24, 'Under Investigation': 72, Resolved: 0, Closed: 0, 'Escalated to DM': 0 };
+const ACTIVE_DISPATCH_STATUSES = ['Assigned', 'Under Investigation', 'Resolved', 'Closed', 'Escalated to DM'];
 
 const STATUS_CFG = {
   Received:              { bg: 'bg-slate-100',      text: 'text-slate-700',   dot: '#94a3b8', border: 'border-slate-200' },
@@ -32,16 +33,6 @@ const RESPONSE_TEMPLATES = {
 function fillTemplate(t, g) {
   return (t || '').replace(/{id}/g, g.id).replace(/{category}/g, g.category)
     .replace(/{location}/g, g.location_tagged).replace(/{department}/g, g.department);
-}
-
-function getSlaInfo(g) {
-  const slaHrs = SLA_HOURS[g.status] || 0;
-  if (slaHrs === 0) return null;
-  const remaining = new Date(g.timestamp).getTime() + slaHrs * 3600000 - Date.now();
-  const overdue   = remaining < 0;
-  const absH = Math.abs(Math.floor(remaining / 3600000));
-  const absM = Math.abs(Math.floor((remaining % 3600000) / 60000));
-  return { overdue, label: overdue ? `OVERDUE by ${absH}h ${absM}m` : `${absH}h ${absM}m left` };
 }
 
 function exportCSV(grievances) {
@@ -476,8 +467,9 @@ function ResolutionRow({ g, onOpenModal, onEscalate, onAssign }) {
         <div className="min-w-0 flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-center">
           <div className="min-w-0">
             <div className="text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors truncate">
-              {g.category || 'Public Grievance'}
+              {g.title || g.headline || g.ai_summary || g.post_text || g.category || 'Public Grievance'}
             </div>
+            <div className="text-[11px] text-slate-500 truncate">{g.category || 'Public grievance'}</div>
             <div className="text-xs text-slate-400 font-mono">{g.id}</div>
           </div>
           <div className="text-xs text-slate-600 flex items-center gap-1.5 truncate">
@@ -547,26 +539,35 @@ export default function ResolutionPortal({ grievances, onUpdateStatus, onEscalat
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [selectedModalGrievance, setSelectedModalGrievance] = useState(null);
 
-  const departments = useMemo(
-    () => [...new Set(grievances.map(g => g.department).filter(Boolean))].sort(),
+  const dispatchRecords = useMemo(
+    () => grievances.filter(g => g.dispatch_approved_at || ACTIVE_DISPATCH_STATUSES.includes(g.status)),
     [grievances]
+  );
+  const pendingApprovalCount = useMemo(
+    () => grievances.filter(g => g.status === 'Received' && !g.dispatch_approved_at
+      && g.officer_verdict !== 'Confirmed Fake').length,
+    [grievances]
+  );
+  const departments = useMemo(
+    () => [...new Set(dispatchRecords.map(g => g.department).filter(Boolean))].sort(),
+    [dispatchRecords]
   );
 
   const stats = useMemo(() => {
     const c = {};
-    grievances.forEach(g => c[g.status] = (c[g.status]||0)+1);
+    dispatchRecords.forEach(g => c[g.status] = (c[g.status]||0)+1);
     return c;
-  }, [grievances]);
+  }, [dispatchRecords]);
 
-  const filtered = grievances.filter(g =>
+  const filtered = dispatchRecords.filter(g =>
     (!statusFilter || g.status === statusFilter) &&
     (!departmentFilter || g.department === departmentFilter)
   );
 
-  const overdueCount = useMemo(() => grievances.filter(g => {
-    const sla = SLA_HOURS[g.status]; if (!sla) return false;
-    return Date.now() > new Date(g.timestamp).getTime() + sla * 3600000;
-  }).length, [grievances]);
+  const overdueCount = useMemo(
+    () => dispatchRecords.filter(g => getSlaInfo(g)?.overdue).length,
+    [dispatchRecords]
+  );
 
   const ALL_STATUSES = [...STATUS_FLOW, 'Escalated to DM'];
 
@@ -576,9 +577,14 @@ export default function ResolutionPortal({ grievances, onUpdateStatus, onEscalat
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="text-base font-bold text-slate-800">Complaint Resolution Tracker</div>
-          <div className="text-xs text-slate-500">{grievances.length} total complaints across Bihar districts</div>
+          <div className="text-xs text-slate-500">{dispatchRecords.length} internal dispatch tickets across Bihar districts</div>
+          {pendingApprovalCount > 0 && (
+            <div className="mt-1 text-xs text-amber-700">
+              {pendingApprovalCount} report{pendingApprovalCount === 1 ? '' : 's'} awaiting operator approval; not yet in the internal dispatch queue.
+            </div>
+          )}
           <div className="mt-1 text-xs text-amber-800">
-            Verify the source and AI-suggested department before assigning. Assignment is recorded internally; this app does not dispatch externally.
+            Only operator-approved reports and actively assigned cases appear here. Queue updates are internal; this app does not dispatch externally.
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

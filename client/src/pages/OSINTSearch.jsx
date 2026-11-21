@@ -74,8 +74,8 @@ const STATUS_CLS = {
   Closed:                'text-slate-500 bg-slate-50 border-slate-200',
 };
 
-function PublicSourceSearch({ onImportSourceItem }) {
-  const [source, setSource] = useState('google-news');
+function PublicSourceSearch({ onImportSourceItem, onAddDemoSample }) {
+  const [source, setSource] = useState('all');
   const [query, setQuery] = useState('');
   const [taxonomy, setTaxonomy] = useState([]);
   const [sectorId, setSectorId] = useState('');
@@ -103,8 +103,10 @@ function PublicSourceSearch({ onImportSourceItem }) {
     setSearchError('');
     setItems([]);
     setSourceStatus([]);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
     try {
-      const result = await api.searchPublicSource(source, query);
+      const result = await api.searchPublicSource(source, query, sectorId, { signal: controller.signal });
       setItems(result.items || []);
       setSourceStatus(result.source_status || [{
         source,
@@ -112,10 +114,27 @@ function PublicSourceSearch({ onImportSourceItem }) {
         source_mode: result.source_mode || 'live',
       }]);
     } catch (error) {
-      setSearchError(error.message);
+      setSearchError(controller.signal.aborted
+        ? 'Search timed out after 12 seconds. Try a different source or a shorter query.'
+        : error.message);
     } finally {
+      clearTimeout(timeoutId);
       setSearching(false);
       setSearchComplete(true);
+    }
+  };
+
+  const handleAddDemoSample = async (item) => {
+    setItemActions(prev => ({ ...prev, [item.id]: { state: 'loading' } }));
+    try {
+      const result = await onAddDemoSample(item);
+      setItemActions(prev => ({
+        ...prev,
+        [item.id]: { state: 'saved', duplicate: false, department: result.record.department,
+          severity: result.record.severity_score, mode: result.analysis.analysis_mode },
+      }));
+    } catch (error) {
+      setItemActions(prev => ({ ...prev, [item.id]: { state: 'error', message: error.message } }));
     }
   };
 
@@ -147,6 +166,7 @@ function PublicSourceSearch({ onImportSourceItem }) {
   };
 
   const selectedStatus = statuses[source];
+  const showingCachedMatches = sourceStatus.some(status => status.source_mode === 'cached-local');
   const selectedSector = taxonomy.find(sector => sector.id === sectorId);
   const sourceConnected = source === 'all' || Boolean(selectedStatus?.configured);
   const sourceStatusLabel = source === 'all'
@@ -154,8 +174,7 @@ function PublicSourceSearch({ onImportSourceItem }) {
     : selectedStatus?.status || (selectedStatus?.configured ? 'Connected' : 'Not configured');
   const sourceAvailable = source === 'all'
     ? Object.values(statuses).some(status => status.configured)
-    : selectedStatus?.configured &&
-    (source !== 'youtube' || selectedStatus.searches_remaining > 0);
+    : Boolean(selectedStatus?.configured);
 
   return (
     <>
@@ -256,8 +275,10 @@ function PublicSourceSearch({ onImportSourceItem }) {
           ))}
         </div>
       )}
-      {source === 'youtube' && selectedStatus?.searches_remaining === 0 && (
-        <p role="status" className="mt-2 text-xs text-amber-800">YouTube’s daily safety quota is reached. Search again tomorrow.</p>
+      {source === 'youtube' && (selectedStatus?.searches_remaining === 0 || selectedStatus?.quota_blocked) && (
+        <p role="status" className="mt-2 text-xs text-amber-800">
+          {selectedStatus?.reason || 'YouTube’s live daily quota is reached.'} Searches can still show matching records already saved locally.
+        </p>
       )}
       <p className="mt-2 text-xs text-slate-500">
         Hashtag and keyword search covers Google News, Reddit, and YouTube public results; it cannot search every website or private social post.
@@ -270,23 +291,34 @@ function PublicSourceSearch({ onImportSourceItem }) {
           <div className="text-sm font-bold text-slate-800">Public Search Results</div>
           {items.length > 0 && <span className="text-xs text-slate-600">{items.length} results</span>}
         </div>
+        {showingCachedMatches && (
+          <p role="status" className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+            Showing cached OSINT matches (Live API quota reached). These reports are already saved locally; they are not new live results.
+          </p>
+        )}
         {searching && items.length === 0 && <p className="text-sm text-slate-600">Searching public sources…</p>}
         {sourceStatus.length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
             {sourceStatus.map(status => (
               <span key={status.source} className={`rounded-full border px-2.5 py-1 text-xs ${
                 status.error ? 'border-rose-200 bg-rose-50 text-rose-800' :
-                  status.source_mode === 'curated-demo' ? 'border-amber-200 bg-amber-50 text-amber-800' :
+                    ['curated-demo', 'cached-local'].includes(status.source_mode) ? 'border-amber-200 bg-amber-50 text-amber-800' :
                     'border-emerald-200 bg-emerald-50 text-emerald-800'
               }`}>
-                {status.source}: {status.error ? status.error : `${status.count} found${status.source_mode === 'curated-demo' ? ' · demo examples only' : ''}`}
+                {status.source}: {status.source_mode === 'cached-local'
+                  ? `${status.count} cached matches`
+                  : status.error
+                    ? status.error
+                    : `${status.count} found${status.source_mode === 'curated-demo' ? ' · demo examples only' : ''}`}
               </span>
             ))}
           </div>
         )}
         {searchComplete && !searching && items.length === 0 && (
           <p className="text-sm text-slate-600">
-            No live matching posts were returned. Try another hashtag or keyword, or check the provider status above.
+            {showingCachedMatches
+              ? 'No matching saved reports were found. Try a broader keyword or search again when the live quota is available.'
+              : 'No matching posts were returned. Try another hashtag or keyword, or check the provider status above.'}
           </p>
         )}
         {items.length > 0 && (
@@ -317,6 +349,7 @@ function PublicSourceSearch({ onImportSourceItem }) {
                         <div className="mb-1.5 flex flex-wrap items-center gap-2">
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${sourceStyle}`}>{item.source}</span>
                           {item.is_demo && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Demo example · not live</span>}
+                          {item.is_cached && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Already saved locally</span>}
                           {item.subreddit && <span className="text-xs font-semibold text-slate-700">r/{item.subreddit}</span>}
                           <span className="text-xs font-semibold text-slate-800">{item.author}</span>
                           {item.published_at && <span className="text-xs text-slate-600">{formatDistanceToNow(item.published_at)}</span>}
@@ -334,11 +367,13 @@ function PublicSourceSearch({ onImportSourceItem }) {
                       </div>
                     </div>
                   </div>
-                  <button type="button" onClick={() => handleImport(item)}
-                    disabled={item.is_demo || !item.url || action?.state === 'loading' || action?.state === 'saved'}
+                  <button type="button" onClick={() => item.is_demo ? handleAddDemoSample(item) : handleImport(item)}
+                    disabled={item.is_cached || (!item.is_demo && !item.url) || action?.state === 'loading' || action?.state === 'saved'}
                     className="inline-flex items-center justify-center gap-1.5 self-start rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                     {action?.state === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Newspaper size={12} />}
-                    {item.is_demo ? 'Demo only' : action?.state === 'saved' ? (action.duplicate ? 'Already added' : 'Added to reports') : 'Analyze & Add'}
+                    {item.is_demo
+                      ? action?.state === 'saved' ? 'Sample added' : 'Add sample to feed'
+                      : item.is_cached ? 'Already in feed' : action?.state === 'saved' ? (action.duplicate ? 'Already added' : 'Added to reports') : 'Analyze & Add'}
                   </button>
                 </div>
                 {action?.state === 'saved' && (
@@ -358,13 +393,17 @@ function PublicSourceSearch({ onImportSourceItem }) {
   );
 }
 
-function GrievanceRow({ g, onSelect, clusterCount }) {
+function GrievanceRow({ g, onSelect, clusterCount, highlighted }) {
   const sv = SEVERITY_CFG(g.severity_score);
   const isSusp = isFlaggedSuspicious(g.authenticity_flag);
   const verified = isVerifiedGenuine(g.authenticity_flag);
   const statusCls = STATUS_CLS[g.status] || STATUS_CLS.Received;
   return (
-    <tr className="table-row-hover border-b border-slate-100 last:border-0" onClick={() => onSelect(g)}>
+    <tr
+      data-report-id={g.id}
+      className={`table-row-hover border-b border-slate-100 last:border-0 transition-colors ${highlighted ? 'bg-amber-100 ring-2 ring-inset ring-amber-400' : ''}`}
+      onClick={() => onSelect(g)}
+    >
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-base">{PLATFORMS[g.platform] || '◎'}</span>
@@ -421,12 +460,16 @@ function GrievanceRow({ g, onSelect, clusterCount }) {
   );
 }
 
-function GrievanceCard({ g, onSelect, clusterCount }) {
+function GrievanceCard({ g, onSelect, clusterCount, highlighted }) {
   const sv = SEVERITY_CFG(g.severity_score);
   const isSusp = isFlaggedSuspicious(g.authenticity_flag);
   const unverified = isUnverified(g.authenticity_flag);
   return (
-    <div className="card-hover p-4" onClick={() => onSelect(g)}>
+    <div
+      data-report-id={g.id}
+      className={`card-hover p-4 transition-colors ${highlighted ? 'bg-amber-100 ring-2 ring-amber-400' : ''}`}
+      onClick={() => onSelect(g)}
+    >
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
           <span className="text-base">{PLATFORMS[g.platform] || '◎'}</span>
@@ -460,27 +503,33 @@ function GrievanceCard({ g, onSelect, clusterCount }) {
   );
 }
 
-export default function OSINTSearch({ filters, onFilterChange, onReset, grievances, loading, onSelectGrievance, onImportSourceItem }) {
+export default function OSINTSearch({ filters, onFilterChange, onReset, grievances, loading, highlightedReportId, onSelectGrievance, onImportSourceItem, onAddDemoSample }) {
   const [viewMode, setViewMode] = useState('table');
   const [loadedFeed, setLoadedFeed] = useState([]);
+  const [quickFilterCounts, setQuickFilterCounts] = useState(null);
   const [loadedFeedError, setLoadedFeedError] = useState('');
 
   useEffect(() => {
     let active = true;
-    api.getGrievances({})
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    api.getQuickFilterCounts({ signal: controller.signal })
       .then(result => {
-        if (active) {
-          setLoadedFeed(current => {
-            const records = new Map(current.map(record => [record.id, record]));
-            for (const record of result.data || []) records.set(record.id, record);
-            return [...records.values()];
-          });
-        }
+        if (active) setQuickFilterCounts(result.counts || {});
       })
       .catch(error => {
-        if (active) setLoadedFeedError(`Quick-filter counts unavailable: ${error.message}`);
-      });
-    return () => { active = false; };
+        if (active && !controller.signal.aborted) {
+          setLoadedFeedError(`Quick-filter count service unavailable; showing counts for loaded reports (${error.message}).`);
+        } else if (active) {
+          setLoadedFeedError('Quick-filter count request timed out; showing counts for loaded reports.');
+        }
+      })
+      .finally(() => clearTimeout(timeoutId));
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -502,7 +551,7 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
 
   return (
     <div className="flex flex-col gap-4">
-      <PublicSourceSearch onImportSourceItem={onImportSourceItem} />
+      <PublicSourceSearch onImportSourceItem={onImportSourceItem} onAddDemoSample={onAddDemoSample} />
 
       {/* Filter bar */}
       <div className="card p-4">
@@ -556,7 +605,7 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
           <span className="text-xs text-slate-500 font-semibold">Quick Filters:</span>
           {QUICK_FILTERS.map(filter => {
             const active = normalizeFilterValue(filters.hashtag) === filter.key;
-            const count = getQuickFilterCount(loadedFeed, filter.terms);
+            const count = quickFilterCounts?.[filter.key] ?? getQuickFilterCount(loadedFeed, filter.terms);
             return (
             <button key={filter.key}
               type="button"
@@ -632,7 +681,7 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
               </thead>
               <tbody>
                 {grievances.map(g => (
-                  <GrievanceRow key={g.id} g={g} onSelect={onSelectGrievance}
+                  <GrievanceRow key={g.id} g={g} highlighted={g.id === highlightedReportId} onSelect={onSelectGrievance}
                     clusterCount={clusterCounts[g.duplicate_cluster_id] || 0} />
                 ))}
               </tbody>
@@ -642,7 +691,7 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {grievances.map(g => (
-            <GrievanceCard key={g.id} g={g} onSelect={onSelectGrievance}
+            <GrievanceCard key={g.id} g={g} highlighted={g.id === highlightedReportId} onSelect={onSelectGrievance}
               clusterCount={clusterCounts[g.duplicate_cluster_id] || 0} />
           ))}
         </div>

@@ -69,7 +69,7 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
   const realtimeCount = stats?.realtime_ingested ?? 0;
   const clusterCount  = stats?.cluster_count ?? 0;
   const unverifiedCount = stats?.unverified ?? 0;
-  const criticalCount = stats?.critical ?? 0;
+  const urgentPendingCount = stats?.urgent_pending_dispatch ?? 0;
 
   // Format analysis engine into plain, easy to understand text
   const getPlainEngineText = (mode) => {
@@ -136,7 +136,7 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
     }
 
     if (key === 'resolution') {
-      if (criticalCount === 0) return null;
+      if (urgentPendingCount === 0) return null;
       return (
         <span
           className={`px-2.5 py-0.5 rounded-full text-xs font-bold font-mono border transition-all ${
@@ -144,9 +144,9 @@ export default function Sidebar({ active, onNavigate, analysisMode, stats }) {
               ? 'bg-rose-500/30 text-rose-200 border-rose-400/50'
               : 'bg-rose-950/80 text-rose-300 border-rose-800/70 animate-glow-rose'
           }`}
-          title={`${criticalCount} high-severity civic emergencies requiring immediate dispatch`}
+          title={`${urgentPendingCount} high-severity reports awaiting human approval for Department Dispatch`}
         >
-          {criticalCount} urgent
+          {urgentPendingCount} urgent pending
         </span>
       );
     }

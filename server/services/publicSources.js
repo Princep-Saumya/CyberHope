@@ -4,6 +4,7 @@ const { getGeminiHealth } = require('./geminiService');
 const { getGroqStatus } = require('./groqService');
 const { getGrokStatus } = require('./grokService');
 const { getSearchTaxonomy } = require('./osintTaxonomy');
+const { normalizePublicSearchQuery } = require('../utils/feedSearch');
 
 const rssParser = new Parser();
 const MAX_QUERY_LENGTH = 160;
@@ -13,14 +14,37 @@ const GOOGLE_NEWS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const GOOGLE_NEWS_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 const YOUTUBE_MIN_INTERVAL_MS = 60 * 1000;
 const YOUTUBE_DAILY_SEARCH_LIMIT = 40;
+const PUBLIC_SEARCH_TIMEOUT_MS = 10000;
 let redditToken = null;
 let youtubeNextRequestAt = 0;
 let youtubeQueue = Promise.resolve();
 let youtubeRequestsPending = 0;
+let youtubeQuotaBlockedDay = null;
 const youtubeSearchCache = new Map();
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function waitWithSignal(ms, signal) {
+  if (!signal) return wait(ms);
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function getRequestSignal(signal) {
+  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 }
 
 function normalizeQuery(query) {
@@ -34,7 +58,13 @@ function normalizeQuery(query) {
     error.status = 400;
     throw error;
   }
-  return query.trim();
+  const normalized = normalizePublicSearchQuery(query);
+  if (!normalized) {
+    const error = new Error('Enter a search phrase with letters or numbers.');
+    error.status = 400;
+    throw error;
+  }
+  return normalized;
 }
 
 function getSourceStatus() {
@@ -46,6 +76,7 @@ function getSourceStatus() {
     process.env.REDDIT_USER_AGENT
   );
   const youtubeConfigured = Boolean(process.env.YOUTUBE_API_KEY);
+  const youtubeQuotaBlocked = youtubeQuotaBlockedDay === new Date().toISOString().slice(0, 10);
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY);
   const geminiHealth = getGeminiHealth();
   const groqStatus = getGroqStatus();
@@ -75,6 +106,8 @@ function getSourceStatus() {
       searches_today: youtubeSearchCount,
       searches_remaining: Math.max(0, YOUTUBE_DAILY_SEARCH_LIMIT - youtubeSearchCount),
       minimum_interval_seconds: YOUTUBE_MIN_INTERVAL_MS / 1000,
+      quota_blocked: youtubeQuotaBlocked,
+      ...(youtubeQuotaBlocked ? { reason: 'YouTube reported its API quota exhausted; live searches are paused for today.' } : {}),
     },
     grok: {
       ...grokStatus,
@@ -107,7 +140,7 @@ function getOsintTaxonomy() {
 
 // ─── Google News RSS Ingestion (100% Free, Zero Key) ─────────────────────────
 
-async function searchGoogleNews(query) {
+async function searchGoogleNews(query, signal) {
   const terms = normalizeQuery(query).replace(/\bwhen:\d+[hdm]\b/gi, '').trim();
   const url = new URL('https://news.google.com/rss/search');
   url.searchParams.set('q', `${terms} Bihar when:1d`);
@@ -115,7 +148,7 @@ async function searchGoogleNews(query) {
   url.searchParams.set('gl', 'IN');
   url.searchParams.set('ceid', 'IN:en');
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  const response = await fetch(url, { signal: getRequestSignal(signal) });
   if (!response.ok) {
     throw new Error(`Google News returned HTTP ${response.status}.`);
   }
@@ -150,7 +183,7 @@ async function searchGoogleNews(query) {
 
 // ─── Reddit API Ingestion (100% Free Script App) ──────────────────────────────
 
-async function getRedditAccessToken() {
+async function getRedditAccessToken(signal) {
   if (redditToken && redditToken.expiresAt > Date.now()) {
     return redditToken.value;
   }
@@ -169,7 +202,7 @@ async function getRedditAccessToken() {
       'User-Agent': REDDIT_USER_AGENT,
     },
     body: new URLSearchParams({ grant_type: 'client_credentials' }),
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: getRequestSignal(signal),
   });
   if (!response.ok) {
     throw new Error(`Reddit OAuth returned HTTP ${response.status}.`);
@@ -194,6 +227,7 @@ const redditSearchCache = new Map();
 const BIHAR_REDDIT_SEED_POOL = [
   {
     id: 't3_bihar_rd_01',
+    sector_id: 'roads',
     source: 'Reddit',
     title: 'Deplorable road condition in Kankarbagh Main Road after recent rains',
     text: 'Deplorable road condition in Kankarbagh Main Road after recent rains. Huge craters have formed near Tempo Stand. Two motorcyclists slipped yesterday night. When will RCD or PMC take note? #BiharRoadProblem #Patna',
@@ -205,6 +239,7 @@ const BIHAR_REDDIT_SEED_POOL = [
   },
   {
     id: 't3_bihar_el_02',
+    sector_id: 'electricity',
     source: 'Reddit',
     title: 'Continuous 14-hour blackout in Muzaffarpur rural belt (Kanti block)',
     text: 'Continuous 14-hour blackout in Muzaffarpur rural belt. Local transformer blew up yesterday morning and electricity department helpline 1912 is continuously engaged. In extreme heat elderly citizens are suffering. #PowerCutBihar #BSPHCL',
@@ -216,6 +251,7 @@ const BIHAR_REDDIT_SEED_POOL = [
   },
   {
     id: 't3_bihar_wt_03',
+    sector_id: 'water-crisis',
     source: 'Reddit',
     title: 'Contaminated brown tap water supplied in Rajendra Nagar Sector 2',
     text: 'Contaminated brown tap water supplied in Rajendra Nagar Sector 2 for the last 4 days. Strong foul smell and muddy sediments. Several families in our apartment complex have fallen sick with diarrhea. Urgent PHED inspection needed.',
@@ -227,6 +263,7 @@ const BIHAR_REDDIT_SEED_POOL = [
   },
   {
     id: 't3_bihar_fl_04',
+    sector_id: 'floods',
     source: 'Reddit',
     title: 'Embankment seepage reported near Supaul Kosi river belt',
     text: 'Embankment seepage reported near Supaul Kosi river belt. Water level rising fast following heavy rainfall in catchment area. Villagers are desperately placing sandbags themselves. Need immediate SDRF and Water Resources Department team.',
@@ -238,6 +275,7 @@ const BIHAR_REDDIT_SEED_POOL = [
   },
   {
     id: 't3_bihar_hp_05',
+    sector_id: 'health',
     source: 'Reddit',
     title: 'Lack of anti-rabies vaccines and basic medicines in Darbhanga DMCH',
     text: 'Lack of anti-rabies vaccines and basic medicines in Darbhanga DMCH emergency ward. Poor patients being forced to buy expensive medicines from outside private pharmacy stores. Health department must intervene immediately. #BiharHealth',
@@ -249,16 +287,29 @@ const BIHAR_REDDIT_SEED_POOL = [
   },
 ];
 
-async function searchReddit(query) {
+function getCuratedRedditResults(query, sectorId) {
   const terms = normalizeQuery(query);
-  const cacheKey = terms.toLowerCase();
+  const words = terms.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+  const pool = sectorId
+    ? BIHAR_REDDIT_SEED_POOL.filter(item => item.sector_id === sectorId)
+    : BIHAR_REDDIT_SEED_POOL.filter(item => {
+      const text = `${item.title} ${item.text}`.toLowerCase();
+      return words.some(word => text.includes(word));
+    });
+
+  return pool.slice(0, 4).map(item => ({ ...item, is_demo: true }));
+}
+
+async function searchReddit(query, signal, sectorId = '') {
+  const terms = normalizeQuery(query);
+  const cacheKey = `${terms.toLowerCase()}|${sectorId}`;
   const cached = redditSearchCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.result;
   }
 
   const waitMs = redditNextRequestAt - Date.now();
-  if (waitMs > 0) await wait(waitMs);
+  if (waitMs > 0) await waitWithSignal(waitMs, signal);
   redditNextRequestAt = Date.now() + REDDIT_MIN_INTERVAL_MS;
 
   let items = [];
@@ -266,7 +317,10 @@ async function searchReddit(query) {
 
   // 1. Try OAuth if configured
   try {
-    const token = await getRedditAccessToken().catch(() => null);
+    const token = await getRedditAccessToken(signal).catch(error => {
+      if (signal?.aborted) throw error;
+      return null;
+    });
     if (token) {
       const url = new URL('https://oauth.reddit.com/r/bihar/search.json');
       url.searchParams.set('q', terms);
@@ -275,10 +329,10 @@ async function searchReddit(query) {
       url.searchParams.set('limit', String(MAX_RESULTS));
       const response = await fetch(url, {
         headers: {
-          'User-Agent': process.env.REDDIT_USER_AGENT || 'GrievancePulseAI/1.0.0 (by /u/cyberhope_bot)',
+          'User-Agent': process.env.REDDIT_USER_AGENT || 'JanSuno-Civic-OSINT/1.0',
           Authorization: `Bearer ${token}`,
         },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: getRequestSignal(signal),
       });
       if (response.ok) {
         const result = await response.json();
@@ -297,6 +351,7 @@ async function searchReddit(query) {
       }
     }
   } catch (oauthErr) {
+    if (signal?.aborted) throw oauthErr;
     console.warn('[searchReddit] OAuth attempt failed:', oauthErr.message);
   }
 
@@ -307,9 +362,9 @@ async function searchReddit(query) {
       const rssUrl = `https://www.reddit.com/r/bihar/search.rss?q=${encodeURIComponent(cleanTerms)}&restrict_sr=1&sort=new`;
       const response = await fetch(rssUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'User-Agent': process.env.REDDIT_USER_AGENT || 'JanSuno-Civic-OSINT/1.0',
         },
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: getRequestSignal(signal),
       });
 
       if (response.ok) {
@@ -338,18 +393,14 @@ async function searchReddit(query) {
         if (items.length) sourceMode = 'live-rss';
       }
     } catch (rssErr) {
+      if (signal?.aborted) throw rssErr;
       console.warn(`[searchReddit] Live RSS search error (${terms}):`, rssErr.message);
     }
   }
 
   // 3. Fallback to curated Bihar civic Reddit feed pool
   if (!items.length) {
-    const qLower = terms.toLowerCase();
-    const words = qLower.split(/\s+/).filter(w => w.length > 2);
-    items = BIHAR_REDDIT_SEED_POOL.filter(p => {
-      const pText = (p.title + ' ' + p.text).toLowerCase();
-      return words.some(w => pText.includes(w));
-    }).slice(0, 4).map(item => ({ ...item, is_demo: true }));
+    items = getCuratedRedditResults(terms, sectorId);
     if (items.length) sourceMode = 'curated-demo';
   }
 
@@ -363,11 +414,17 @@ async function searchReddit(query) {
 
 // ─── YouTube Data API v3 Ingestion (100% Free - 10,000 units/day) ─────────────
 
-async function searchYouTube(query) {
+async function searchYouTube(query, signal) {
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
     const error = new Error('YOUTUBE_API_KEY is not configured on the server.');
     error.status = 503;
+    throw error;
+  }
+  if (youtubeQuotaBlockedDay === new Date().toISOString().slice(0, 10)) {
+    const error = new Error('YouTube API quota was exhausted earlier today. Live searches are paused until the next UTC day.');
+    error.status = 429;
+    error.isQuotaExceeded = true;
     throw error;
   }
 
@@ -378,7 +435,10 @@ async function searchYouTube(query) {
     throw error;
   }
   youtubeRequestsPending++;
-  const pending = youtubeQueue.then(() => performYouTubeSearch(terms, apiKey));
+  const pending = youtubeQueue.then(() => {
+    if (signal?.aborted) throw signal.reason;
+    return performYouTubeSearch(terms, apiKey, signal);
+  });
   youtubeQueue = pending.then(
     () => { youtubeRequestsPending--; },
     () => { youtubeRequestsPending--; },
@@ -386,7 +446,7 @@ async function searchYouTube(query) {
   return pending;
 }
 
-async function performYouTubeSearch(terms, apiKey) {
+async function performYouTubeSearch(terms, apiKey, signal) {
   const cacheKey = terms.toLowerCase();
   const cached = youtubeSearchCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -394,7 +454,8 @@ async function performYouTubeSearch(terms, apiKey) {
   }
 
   const waitMs = youtubeNextRequestAt - Date.now();
-  if (waitMs > 0) await wait(waitMs);
+  if (waitMs > 0) await waitWithSignal(waitMs, signal);
+  if (signal?.aborted) throw signal.reason;
   youtubeNextRequestAt = Date.now() + YOUTUBE_MIN_INTERVAL_MS;
   consumeDailyQuota('youtube', YOUTUBE_DAILY_SEARCH_LIMIT);
 
@@ -406,10 +467,19 @@ async function performYouTubeSearch(terms, apiKey) {
   url.searchParams.set('order', 'date');
   url.searchParams.set('key', apiKey);
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  const response = await fetch(url, { signal: getRequestSignal(signal) });
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
-    throw new Error(`YouTube API returned HTTP ${response.status}: ${errBody.error?.message || response.statusText}`);
+    const reasons = (errBody.error?.errors || []).map(error => error.reason).filter(Boolean);
+    const message = errBody.error?.message || response.statusText;
+    const error = new Error(`YouTube API returned HTTP ${response.status}: ${message}`);
+    error.status = response.status;
+    error.isQuotaExceeded = reasons.includes('quotaExceeded')
+      || /quotaExceeded|daily.*quota|quota.*exceeded/i.test(message);
+    if (error.isQuotaExceeded) {
+      youtubeQuotaBlockedDay = new Date().toISOString().slice(0, 10);
+    }
+    throw error;
   }
 
   const result = await response.json();
@@ -434,16 +504,22 @@ async function performYouTubeSearch(terms, apiKey) {
 
 // ─── Unified Public Search Router ─────────────────────────────────────────────
 
-async function searchPublicSource(source, query) {
-  if (source === 'google-news') return searchGoogleNews(query);
-  if (source === 'reddit') return searchReddit(query);
-  if (source === 'youtube') return searchYouTube(query);
+async function searchPublicSource(source, query, { signal, sectorId = '' } = {}) {
+  if (source === 'google-news') return searchGoogleNews(query, signal);
+  if (source === 'reddit') return searchReddit(query, signal, sectorId);
+  if (source === 'youtube') return searchYouTube(query, signal);
   if (source === 'all') {
     const sources = ['google-news', 'reddit'];
     const youtubeWaitMs = youtubeNextRequestAt - Date.now();
-    const youtubeSkipped = youtubeRequestsPending > 0 || youtubeWaitMs > 10000;
+    const youtubeStatus = getSourceStatus().youtube;
+    const youtubeSkipped = !youtubeStatus.configured
+      || youtubeStatus.searches_remaining === 0
+      || youtubeStatus.quota_blocked
+      || youtubeRequestsPending > 0
+      || youtubeWaitMs > 10000;
     if (!youtubeSkipped) sources.push('youtube');
-    const settled = await Promise.allSettled(sources.map(provider => searchPublicSource(provider, query)));
+    const settled = await Promise.allSettled(sources.map(provider => searchPublicSource(provider, query, { signal, sectorId })));
+    if (signal?.aborted) throw signal.reason;
     const source_status = settled.map((result, index) => {
       if (result.status === 'fulfilled') {
         return {
@@ -462,7 +538,11 @@ async function searchPublicSource(source, query) {
       source_status.push({
         source: 'youtube',
         count: 0,
-        error: 'Skipped to respect YouTube request limits; search YouTube separately when ready.',
+        error: !youtubeStatus.configured
+          ? 'Skipped because the YouTube API key is not configured.'
+          : youtubeStatus.searches_remaining === 0 || youtubeStatus.quota_blocked
+            ? 'Skipped because the daily YouTube API quota is exhausted.'
+            : 'Skipped to respect YouTube request limits; search YouTube separately when ready.',
       });
     }
     const items = settled.flatMap(result => result.status === 'fulfilled' ? result.value.items || [] : []);
@@ -480,4 +560,6 @@ module.exports = {
   searchGoogleNews,
   searchReddit,
   searchYouTube,
+  normalizeQuery,
+  getCuratedRedditResults,
 };

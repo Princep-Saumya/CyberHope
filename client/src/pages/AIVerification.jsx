@@ -458,12 +458,15 @@ function ForensicAnalysisModal({
   grievance,
   onClose,
   onVerify,
+  onApproveForDispatch,
   onReanalyze,
   onCopyId,
   copiedId
 }) {
   const [officerNote, setOfficerNote] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isApprovingDispatch, setIsApprovingDispatch] = useState(false);
+  const [dispatchApprovalError, setDispatchApprovalError] = useState('');
   const [isReanalyzing, setIsReanalyzing] = useState(false);
   const [showExtendedOcr, setShowExtendedOcr] = useState(false);
 
@@ -503,6 +506,22 @@ function ForensicAnalysisModal({
       if (onReanalyze) await onReanalyze(grievance);
     } finally {
       setIsReanalyzing(false);
+    }
+  };
+
+  const handleApproveForDispatch = async () => {
+    if (!onApproveForDispatch) return;
+    setIsApprovingDispatch(true);
+    setDispatchApprovalError('');
+    try {
+      await onApproveForDispatch(grievance.id, {
+        notes: officerNote || 'Operator reviewed and approved this report for internal Department Dispatch.',
+        officer_id: 'CyberCell_DSP_Patna',
+      });
+    } catch (error) {
+      setDispatchApprovalError(`Could not approve dispatch: ${error.message}`);
+    } finally {
+      setIsApprovingDispatch(false);
     }
   };
 
@@ -710,7 +729,7 @@ function ForensicAnalysisModal({
               <span className="text-[11px] text-slate-400 font-medium">Model Advisory (Non-Binding)</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
               <ColorThemedRiskCard
                 value={grievance.authenticity_risk_score || 15}
                 label="Authenticity Risk"
@@ -878,7 +897,30 @@ function ForensicAnalysisModal({
                   <Clock size={16} />
                   <span>Request Field Check</span>
                 </button>
+                {grievance.dispatch_approved_at ? (
+                  <div className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-700 bg-emerald-950/60 px-4 py-3 text-xs font-bold text-emerald-200">
+                    <CheckCircle2 size={16} />
+                    <span>Approved for Dispatch</span>
+                  </div>
+                ) : reviewState.id !== 'fake' && (
+                  <button
+                    onClick={handleApproveForDispatch}
+                    disabled={isVerifying || isApprovingDispatch || !onApproveForDispatch}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-600 px-4 py-3 text-xs font-bold text-white shadow-sm transition-all hover:bg-sky-500 disabled:opacity-60"
+                  >
+                    {isApprovingDispatch ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                    <span>{isApprovingDispatch ? 'Approving…' : 'Approve & Send to Dispatch'}</span>
+                  </button>
+                )}
               </div>
+              {dispatchApprovalError && (
+                <div role="alert" className="rounded-lg border border-rose-700 bg-rose-950/50 px-3 py-2 text-xs text-rose-200">
+                  {dispatchApprovalError}
+                </div>
+              )}
+              <p className="text-[11px] text-slate-400">
+                Approval adds this report to the internal queue; no external message is sent.
+              </p>
             </div>
 
             <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800">
@@ -910,6 +952,7 @@ export default function AIVerification({
   selectedGrievanceId = null,
   onReanalyze,
   onVerify,
+  onApproveForDispatch,
   onReanalyzeAll,
   batchAuditProgress = null,
 }) {
@@ -1299,6 +1342,7 @@ export default function AIVerification({
           grievance={activeModalGrievance}
           onClose={() => setActiveModalGrievance(null)}
           onVerify={onVerify}
+          onApproveForDispatch={onApproveForDispatch}
           onReanalyze={onReanalyze}
           onCopyId={handleCopyId}
           copiedId={copiedId}

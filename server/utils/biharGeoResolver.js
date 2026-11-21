@@ -66,6 +66,7 @@ const LANDMARKS = [
     'phanishwar nath renu', 'फणीश्वर नाथ रेणु', 'फणीश्वरनाथ रेणु',
   ] },
 ];
+const LOCATION_RESOLUTION_VERSION = 1;
 
 function normalizeText(text) {
   return String(text || '')
@@ -94,6 +95,8 @@ function matchingNames(text, entries) {
 }
 
 function extractBiharLocation(record) {
+  if (record.location_resolution_version === LOCATION_RESOLUTION_VERSION) return record;
+
   const existingDistrict = String(record.resolved_district || '').trim();
   const existingLandmark = String(record.resolved_landmark || '').trim();
   if (existingDistrict && record.geo_confidence === 'manual') {
@@ -103,6 +106,7 @@ function extractBiharLocation(record) {
       resolved_landmark: existingLandmark,
       resolved_location_keys: existingLandmark ? [existingLandmark.toLowerCase()] : [],
       geo_confidence: 'manual',
+      location_resolution_version: LOCATION_RESOLUTION_VERSION,
     };
   }
 
@@ -169,7 +173,12 @@ function extractBiharLocation(record) {
     ...(explicitLandmark ? [explicitLandmark] : []),
     ...(existingLandmark ? [existingLandmark] : []),
   ].map(value => value.trim().toLocaleLowerCase()).filter(Boolean));
-  if (!district && !landmark && locationKeys.size === 0) return record;
+  if (!district && !landmark && locationKeys.size === 0) {
+    return {
+      ...record,
+      location_resolution_version: LOCATION_RESOLUTION_VERSION,
+    };
+  }
   const locationLabel = landmark
     ? `${landmark}, ${district || 'Bihar'}`
     : district ? `${district}, Bihar` : 'Location unverified';
@@ -189,6 +198,7 @@ function extractBiharLocation(record) {
     ])],
     resolved_location_keys: [...locationKeys],
     geo_confidence: record.geo_confidence === 'manual' ? 'manual' : 'text_extracted',
+    location_resolution_version: LOCATION_RESOLUTION_VERSION,
   };
 }
 

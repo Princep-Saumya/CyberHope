@@ -3,11 +3,13 @@ import { io } from 'socket.io-client';
 import { api } from '../services/api';
 
 const DEBOUNCE_MS = 400;
+const FEED_REQUEST_TIMEOUT_MS = 5000;
+const DASHBOARD_REQUEST_TIMEOUT_MS = 5000;
 
 function sortByNewestTimestamp(records) {
   return [...records].sort((a, b) => {
-    const aTimestamp = Date.parse(a.timestamp);
-    const bTimestamp = Date.parse(b.timestamp);
+    const aTimestamp = Date.parse(a.created_at || a.imported_at || a.timestamp);
+    const bTimestamp = Date.parse(b.created_at || b.imported_at || b.timestamp);
     if (!Number.isFinite(aTimestamp)) return Number.isFinite(bTimestamp) ? 1 : 0;
     if (!Number.isFinite(bTimestamp)) return -1;
     return bTimestamp - aTimestamp;
@@ -35,7 +37,7 @@ export function useGrievances() {
   const [error, setError] = useState(null);
   const [selectedGrievance, setSelectedGrievance] = useState(null);
   const [realtimeNotification, setRealtimeNotification] = useState(null);
-  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [socketStatus, setSocketStatus] = useState('connecting');
   const [pollingStatus, setPollingStatus] = useState(null);
   const [batchAuditProgress, setBatchAuditProgress] = useState(null);
 
@@ -43,30 +45,48 @@ export function useGrievances() {
   const socketRef = useRef(null);
   const clustersRefreshTimer = useRef(null);
 
-  const loadStats = useCallback(async () => {
+  const loadStats = useCallback(async (signal) => {
     try {
-      const [s, c] = await Promise.all([api.getStats(), api.getClusters()]);
+      const [s, c] = await Promise.all([
+        api.getStats({ signal }),
+        api.getClusters({ signal }),
+      ]);
+      if (signal?.aborted) return;
       setStats(s);
       setClusters(c.data || []);
       setUnlocatedRecords(c.unlocated_records || []);
       setExcludedNonCivicCount(c.excluded_non_civic_count || 0);
     } catch (e) {
-      console.error('Failed to load stats/clusters:', e);
+      if (!signal?.aborted) console.error('Failed to load stats/clusters:', e);
     }
   }, []);
 
   const loadGrievances = useCallback(async (activeFilters, signal) => {
     setLoading(true);
     setError(null);
+    const requestController = new AbortController();
+    const abortForUnmount = () => requestController.abort(signal?.reason);
+    signal?.addEventListener('abort', abortForUnmount, { once: true });
+    const timeoutId = setTimeout(
+      () => requestController.abort(new DOMException('Grievance feed request timed out.', 'TimeoutError')),
+      FEED_REQUEST_TIMEOUT_MS,
+    );
     try {
-      const result = await api.getGrievances(activeFilters, { signal });
-      if (signal?.aborted) return;
+      const result = await api.getGrievances(activeFilters, { signal: requestController.signal });
+      if (signal?.aborted || requestController.signal.aborted) return;
       setGrievances(sortByNewestTimestamp(result.data || []));
     } catch (e) {
       if (signal?.aborted) return;
+      if (requestController.signal.aborted) {
+        setError('Loading reports timed out after 5 seconds. Please retry.');
+        setGrievances([]);
+        return;
+      }
       setError(e.message);
       setGrievances([]);
     } finally {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', abortForUnmount);
       if (!signal?.aborted) setLoading(false);
     }
   }, []);
@@ -86,24 +106,40 @@ export function useGrievances() {
 
   // Load initial stats & clusters
   useEffect(() => {
-    loadStats();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(new DOMException('Dashboard data request timed out.', 'TimeoutError')),
+      DASHBOARD_REQUEST_TIMEOUT_MS,
+    );
+    loadStats(controller.signal).finally(() => clearTimeout(timeoutId));
     api.getRealTimeStatus().then(setPollingStatus).catch(() => {});
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
   }, [loadStats]);
 
   // ─── WebSocket Live Ingestion Connection ────────────────────────────────────
   useEffect(() => {
     const socket = io({
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 3000,
+      reconnectionDelayMax: 30000,
+      randomizationFactor: 0.5,
     });
     socketRef.current = socket;
 
     socket.on('connect', () => {
-      setIsSocketConnected(true);
+      setSocketStatus('connected');
     });
 
     socket.on('disconnect', () => {
-      setIsSocketConnected(false);
+      setSocketStatus('reconnecting');
+    });
+
+    socket.on('connect_error', () => {
+      setSocketStatus('reconnecting');
     });
 
     socket.on('stats_updated', ({ stats: updatedStats }) => {
@@ -126,6 +162,14 @@ export function useGrievances() {
           console.error('Failed to refresh clusters after location assignment:', error);
         });
       }, 100);
+    });
+
+    socket.on('grievance_dispatch_approved', ({ record, stats: updatedStats }) => {
+      if (updatedStats) setStats(updatedStats);
+      if (record) {
+        setGrievances(prev => prev.map(item => item.id === record.id ? record : item));
+        setSelectedGrievance(prev => prev?.id === record.id ? record : prev);
+      }
     });
 
     socket.on('new_grievance', (payload) => {
@@ -251,11 +295,12 @@ export function useGrievances() {
     async (item) => {
       const result = await api.importPublicSourceItem(item);
       const [list, nextStats, nextClusters] = await Promise.all([
-        api.getGrievances(filters),
+        api.getGrievances(DEFAULT_FILTERS),
         api.getStats(),
         api.getClusters(),
       ]);
-      setGrievances(list.data || []);
+      setFilters(DEFAULT_FILTERS);
+      setGrievances(sortByNewestTimestamp(list.data || []));
       setStats(nextStats);
       setClusters(nextClusters.data || []);
       setUnlocatedRecords(nextClusters.unlocated_records || []);
@@ -263,7 +308,7 @@ export function useGrievances() {
       setError(null);
       return result;
     },
-    [filters]
+    []
   );
 
   const reanalyzeGrievance = useCallback(
@@ -323,6 +368,19 @@ export function useGrievances() {
     [loadStats]
   );
 
+  const approveGrievanceForDispatch = useCallback(
+    async (id, payload) => {
+      const result = await api.approveGrievanceForDispatch(id, payload);
+      if (result.record) {
+        setGrievances(prev => prev.map(grievance => grievance.id === id ? result.record : grievance));
+        setSelectedGrievance(prev => prev?.id === id ? result.record : prev);
+        await loadStats();
+      }
+      return result;
+    },
+    [loadStats]
+  );
+
   const reanalyzeAllGrievances = useCallback(
     async () => {
       const { job: startedJob } = await api.reanalyzeAllGrievances();
@@ -360,13 +418,14 @@ export function useGrievances() {
     assignGrievanceLocation,
     escalateGrievance,
     verifyGrievance,
+    approveGrievanceForDispatch,
     reanalyzeAllGrievances,
     addSampleReport,
     importPublicSourceItem,
     reanalyzeGrievance,
     getClusterSiblings,
     // Real-Time Stream hooks
-    isSocketConnected,
+    socketStatus,
     realtimeNotification,
     clearNotification,
     triggerRealtimePoll,

@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  DERIVED_DATA_VERSION,
   clusterGrievances,
   getMasterTickets,
   hasUsableLocation,
@@ -95,6 +96,13 @@ test('requires a resolved place and keeps generic or unrelated district-only rep
     coordinates_approximate: true,
     location_tagged: 'Ward 15',
   })]), []);
+});
+
+test('marks derived clustering data with a version for startup cache validation', () => {
+  const [clustered] = clusterGrievances([report('derived-version')]);
+
+  assert.equal(clustered.derived_data_version, DERIVED_DATA_VERSION);
+  assert.equal(clustered.resolved_landmark, 'Kankarbagh');
 });
 
 test('extracts Bagaha and Gandak references before clustering text-located reports', () => {
