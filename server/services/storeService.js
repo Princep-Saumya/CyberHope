@@ -8,6 +8,7 @@ const path = require('path');
 const Database = require('better-sqlite3');
 const { clusterGrievances, getMasterTickets } = require('../utils/clustering');
 const { VERIFIED_GENUINE_FLAG, FLAGGED_SUSPICIOUS_FLAG } = require('../utils/verification');
+const { matchesHashtagFilter } = require('../utils/feedSearch');
 
 const databasePath = process.env.GRIEVANCE_DB_PATH
   ? path.resolve(process.env.GRIEVANCE_DB_PATH)
@@ -92,6 +93,13 @@ function initStore() {
       if (record.source_url) {
         record.source_url = sanitizeSourceUrl(record.source_url, record.platform);
       }
+      if (['t3_kankarbagh_rd', 't3_muzaffarpur_el'].includes(record.source_id)
+        || record.source_id?.startsWith('t3_bihar_')) {
+        record.is_reference_record = true;
+        record.is_realtime_stream = false;
+        record.is_demo = true;
+        record.data_origin = 'demo-seed';
+      }
       return record;
     } catch (error) {
       throw new Error(`Could not load a grievance record from SQLite: ${error.message}`);
@@ -110,7 +118,7 @@ function initStore() {
         image_ocr_text: '',
         location_tagged: 'Patna',
         coordinates: { lat: 25.5941, lng: 85.1376 },
-        coordinates_approximate: false,
+        coordinates_approximate: true,
         hashtags: ['#BiharRoadProblem', '#Patna'],
         department: 'Road Construction Department (RCD)',
         sector: 'roads',
@@ -128,7 +136,9 @@ function initStore() {
         analysis_mode: 'groq:triage',
         source_id: 't3_kankarbagh_rd',
         source_url: 'https://www.reddit.com/r/bihar/search/?q=kankarbagh+road&restrict_sr=1',
-        is_realtime_stream: true,
+        is_realtime_stream: false,
+        is_reference_record: true,
+        data_origin: 'demo-seed',
         imported_at: new Date().toISOString(),
       },
       {
@@ -141,7 +151,7 @@ function initStore() {
         image_ocr_text: '',
         location_tagged: 'Muzaffarpur',
         coordinates: { lat: 26.1209, lng: 85.3647 },
-        coordinates_approximate: false,
+        coordinates_approximate: true,
         hashtags: ['#PowerCutBihar', '#BSPHCL'],
         department: 'Bihar State Power Holding Company Ltd (BSPHCL)',
         sector: 'electricity',
@@ -159,7 +169,9 @@ function initStore() {
         analysis_mode: 'groq:triage',
         source_id: 't3_muzaffarpur_el',
         source_url: 'https://www.reddit.com/r/bihar/search/?q=muzaffarpur+power&restrict_sr=1',
-        is_realtime_stream: true,
+        is_realtime_stream: false,
+        is_reference_record: true,
+        data_origin: 'demo-seed',
         imported_at: new Date().toISOString(),
       },
     ];
@@ -192,6 +204,17 @@ function getGrievance(id) {
   return grievanceStore.find(g => g.id === id);
 }
 
+function findDuplicateGrievance({ id, source_url, source_id, platform }) {
+  const normalizedSourceUrl = source_url
+    ? sanitizeSourceUrl(source_url, platform)
+    : null;
+  return grievanceStore.find(g =>
+    (id && g.id === id)
+    || (normalizedSourceUrl && g.source_url === normalizedSourceUrl)
+    || (source_id && platform && g.source_id === source_id && g.platform === platform)
+  ) || null;
+}
+
 function compareByNewestTimestamp(a, b) {
   const aTimestamp = Date.parse(a.timestamp);
   const bTimestamp = Date.parse(b.timestamp);
@@ -205,11 +228,7 @@ function fetchGrievances(filters = {}) {
   let results = [...grievanceStore];
 
   if (hashtag && hashtag.trim()) {
-    const q = hashtag.trim().toLowerCase();
-    results = results.filter(g =>
-      (g.hashtags || []).some(h => h.toLowerCase().includes(q)) ||
-      (g.post_text && g.post_text.toLowerCase().includes(q))
-    );
+    results = results.filter(record => matchesHashtagFilter(record, hashtag));
   }
 
   if (location && location.trim()) {
@@ -252,9 +271,7 @@ function addGrievance(newRecord) {
   if (newRecord.source_url) {
     newRecord.source_url = sanitizeSourceUrl(newRecord.source_url, newRecord.platform);
   }
-  const existing = grievanceStore.find(
-    g => (g.source_url && g.source_url === newRecord.source_url) || g.id === newRecord.id
-  );
+  const existing = findDuplicateGrievance(newRecord);
   if (existing) {
     return { record: existing, duplicate: true };
   }
@@ -270,14 +287,66 @@ function addGrievance(newRecord) {
 function updateGrievanceStatus(id, status) {
   const idx = grievanceStore.findIndex(g => g.id === id);
   if (idx === -1) return null;
+  const current = grievanceStore[idx];
+  const timestamp = new Date().toISOString();
+  const isAssignment = status === 'Assigned' && current.status !== 'Assigned';
   const updatedRecord = {
-    ...grievanceStore[idx],
+    ...current,
     status,
-    updated_at: new Date().toISOString(),
+    updated_at: timestamp,
+    ...(isAssignment ? {
+      assignment: {
+        department: current.department || 'General Administration',
+        assigned_at: timestamp,
+        delivery: 'internal',
+      },
+    } : {}),
+    audit_log: [
+      ...(current.audit_log || []),
+      {
+        action: isAssignment ? 'ASSIGNED_TO_DEPARTMENT' : 'STATUS_CHANGED',
+        timestamp,
+        by: 'Operator',
+        note: isAssignment
+          ? `Assigned to ${current.department || 'General Administration'} for internal review. No external dispatch was sent.`
+          : `Status changed from ${current.status} to ${status}.`,
+      },
+    ],
   };
   persistRecord(updatedRecord);
   grievanceStore[idx] = updatedRecord;
   return updatedRecord;
+}
+
+function assignGrievanceLocation(id, district, landmark = '') {
+  const current = grievanceStore.find(record => record.id === id);
+  if (!current) return null;
+
+  const timestamp = new Date().toISOString();
+  const locationLabel = landmark ? `${landmark}, ${district}` : `${district}, Bihar`;
+  const updatedRecord = {
+    ...current,
+    location_tagged: locationLabel,
+    resolved_district: district,
+    resolved_landmark: landmark || null,
+    geo_confidence: 'manual',
+    coordinates_approximate: current.coordinates ? true : current.coordinates_approximate,
+    updated_at: timestamp,
+    audit_log: [
+      ...(current.audit_log || []),
+      {
+        action: 'LOCATION_ASSIGNED',
+        timestamp,
+        by: 'Operator',
+        note: `Location manually assigned as ${locationLabel}. No GPS coordinates were inferred.`,
+      },
+    ],
+  };
+  grievanceStore = clusterGrievances(
+    grievanceStore.map(record => record.id === id ? updatedRecord : record)
+  );
+  persistRecords(grievanceStore);
+  return grievanceStore.find(record => record.id === id);
 }
 
 function recordAcknowledgment(id, message) {
@@ -332,9 +401,10 @@ function updateGrievanceAnalysis(id, analysis) {
     ai_analyzed_at: new Date().toISOString(),
   };
 
-  persistRecord(updatedRecord);
-  grievanceStore[idx] = updatedRecord;
-  return updatedRecord;
+  const updatedRecords = grievanceStore.map(record => record.id === id ? updatedRecord : record);
+  grievanceStore = clusterGrievances(updatedRecords);
+  persistRecords(grievanceStore);
+  return grievanceStore.find(record => record.id === id);
 }
 
 function recordVerification(id, { verdict, notes = '', officer_id = 'CyberCell_Officer_01' }) {
@@ -376,6 +446,7 @@ function recordVerification(id, { verdict, notes = '', officer_id = 'CyberCell_O
     audit_log: [...(current.audit_log || []), auditEntry],
   };
 
+  persistRecord(grievanceStore[idx]);
   return grievanceStore[idx];
 }
 
@@ -384,7 +455,9 @@ function calcStats(records) {
   const clusters = getMasterTickets(allRecords);
   const duplicatesCount = clusters.reduce((sum, c) => sum + (c.member_count || 1), 0);
 
-  const realTimeFeedCount = allRecords.filter(g => g.is_realtime_stream || ['Google News', 'Reddit', 'YouTube'].includes(g.platform)).length;
+  const realTimeFeedCount = allRecords.filter(g =>
+    g.is_realtime_stream && !g.is_reference_record && !g.is_demo
+  ).length;
 
   return {
     total: allRecords.length,
@@ -433,9 +506,11 @@ module.exports = {
   clearStore,
   getStore,
   getGrievance,
+  findDuplicateGrievance,
   fetchGrievances,
   addGrievance,
   updateGrievanceStatus,
+  assignGrievanceLocation,
   recordAcknowledgment,
   updateGrievanceAnalysis,
   recordVerification,

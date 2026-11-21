@@ -5,7 +5,7 @@
 
 const { searchGoogleNews, searchYouTube, searchReddit } = require('./publicSources');
 const { analyzePost } = require('./geminiService');
-const { addGrievance, calcStats } = require('./storeService');
+const { addGrievance, calcStats, findDuplicateGrievance } = require('./storeService');
 const { getPollQuery } = require('./osintTaxonomy');
 
 const GEMINI_POLL_EVERY_N_POLLS = 40;
@@ -26,6 +26,7 @@ let pollingStats = {
   current_query: '',
   current_sector: '',
   current_source: 'Reddit / News RSS',
+  last_poll: null,
 };
 
 async function pollOnce() {
@@ -38,6 +39,10 @@ async function pollOnce() {
   pollingStats.current_sector = sector.id;
   pollingStats.last_polled_at = new Date().toISOString();
   pollingStats.total_polls++;
+  let itemsFound = 0;
+  let newlyIngestedCount = 0;
+  let skippedDuplicateCount = 0;
+  let skippedDemoCount = 0;
 
   try {
     const useYouTube = Boolean(process.env.YOUTUBE_API_KEY)
@@ -91,13 +96,27 @@ async function pollOnce() {
     }
 
     const items = sourceResult.items || [];
+    itemsFound = items.length;
     pollingStats.total_items_found += items.length;
 
-    let newlyIngestedCount = 0;
     let usedGeminiThisPoll = false;
 
     for (const item of items) {
+      if (item.is_demo) {
+        skippedDemoCount++;
+        continue;
+      }
       if (!item.text && !item.title) continue;
+
+      const platformName = item.source || (item.subreddit ? 'Reddit' : 'Google News');
+      if (findDuplicateGrievance({
+        source_id: item.id || null,
+        source_url: item.url || null,
+        platform: platformName,
+      })) {
+        skippedDuplicateCount++;
+        continue;
+      }
 
       const postText = (item.text || item.title).slice(0, 800);
       const useGemini = pollingStats.total_polls % GEMINI_POLL_EVERY_N_POLLS === 1
@@ -105,7 +124,6 @@ async function pollOnce() {
       if (useGemini) usedGeminiThisPoll = true;
       const analysis = await analyzePost(postText, '', { useGemini });
 
-      const platformName = item.source || (item.subreddit ? 'Reddit' : 'Google News');
       let authorHandle = item.author;
       if (!authorHandle) {
         authorHandle = platformName === 'Reddit' ? 'u/bihar_redditor' : '@bihar_live_desk';
@@ -167,6 +185,16 @@ async function pollOnce() {
   } catch (err) {
     console.error('[RealTimePoller] Poll cycle failed:', err.message);
   } finally {
+    pollingStats.last_poll = {
+      query,
+      sector: sector.id,
+      source: pollingStats.current_source,
+      found: itemsFound,
+      ingested: newlyIngestedCount,
+      duplicates: skippedDuplicateCount,
+      demo_items_skipped: skippedDemoCount,
+      completed_at: new Date().toISOString(),
+    };
     pollInProgress = false;
   }
 }

@@ -18,11 +18,11 @@ async function request(path, options = {}) {
 
 export const api = {
   // GET /api/grievances with filters
-  getGrievances: (filters = {}) => {
+  getGrievances: (filters = {}, options = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
     const qs = params.toString();
-    return request(`/grievances${qs ? `?${qs}` : ''}`);
+    return request(`/grievances${qs ? `?${qs}` : ''}`, options);
   },
 
   // GET /api/grievances/:id
@@ -33,6 +33,13 @@ export const api = {
     request(`/grievances/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    }),
+
+  // PATCH /api/grievances/:id/location — manual district / landmark review
+  assignLocation: (id, district, landmark) =>
+    request(`/grievances/${id}/location`, {
+      method: 'PATCH',
+      body: JSON.stringify({ district, landmark }),
     }),
 
   // POST /api/grievances/:id/acknowledgment — save a local record, not an outbound message
@@ -102,9 +109,11 @@ export const api = {
       body: JSON.stringify({ verdict, notes, officer_id }),
     }),
 
-  // POST /api/realtime/reanalyze-all — batch AI re-analysis
+  // POST /api/realtime/reanalyze-all — start a bounded background AI re-analysis job
   reanalyzeAllGrievances: () =>
     request('/realtime/reanalyze-all', { method: 'POST' }),
+  getReanalysisJob: (jobId) =>
+    request(`/realtime/reanalyze-all/${encodeURIComponent(jobId)}`),
 
   // Real-Time Poller Endpoints
   getRealTimeStatus: () => request('/realtime/status'),

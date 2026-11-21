@@ -12,6 +12,53 @@ const DEPARTMENTS = [
 ];
 const LOCATIONS   = ['', 'Patna', 'Gaya', 'Muzaffarpur', 'Bhagalpur', 'Darbhanga', 'Nalanda'];
 const PLATFORMS   = { 'X (Twitter)': '𝕏', Facebook: 'f', Instagram: '◉', 'WhatsApp (Screenshot)': '💬' };
+const QUICK_FILTERS = [
+  { label: '#BPSC', key: 'bpsc', terms: [['bpsc'], ['bihar', 'public', 'service', 'commission']] },
+  { label: '#PatnaFloods', key: 'patnafloods', terms: [['patnafloods'], ['patna', 'flood'], ['पटना', 'बाढ़'], ['पटना', 'बाढ़']] },
+  { label: '#RCD_Bihar', key: 'rcdbihar', terms: [['rcdbihar'], ['rcd', 'bihar'], ['road', 'construction'], ['सड़क', 'बिहार'], ['सडक', 'बिहार']] },
+  { label: '#PowerOutage', key: 'poweroutage', terms: [
+    ['poweroutage'], ['power', 'outage'], ['power', 'cut'], ['electricity'],
+    ['transformer'], ['बिजली'], ['विद्युत'],
+  ] },
+  { label: '#WaterCrisis', key: 'watercrisis', terms: [
+    ['watercrisis'], ['water', 'shortage'], ['water', 'contamination'],
+    ['water', 'supply'], ['पानी'], ['पेयजल'], ['जल', 'संकट'],
+  ] },
+];
+
+function getFeedSearchText(record) {
+  return [
+    record.title,
+    record.description,
+    record.post_text,
+    record.body,
+    record.ai_summary,
+    record.location_tagged,
+    record.department,
+    record.category,
+    record.hashtags,
+    record.extracted_keywords,
+    record.extractedKeywords,
+    record.keywords,
+  ]
+    .flatMap(value => Array.isArray(value) ? value : [value])
+    .filter(value => typeof value === 'string')
+    .join(' ')
+    .normalize('NFKC')
+    .toLocaleLowerCase()
+    .replace(/#/g, ' ');
+}
+
+function getQuickFilterCount(records, terms) {
+  return records.filter(record => {
+    const text = getFeedSearchText(record);
+    return terms.some(variant => variant.every(term => text.includes(term)));
+  }).length;
+}
+
+function normalizeFilterValue(value) {
+  return String(value || '').trim().replace(/^#+/, '').toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+}
 
 const SEVERITY_CFG = s =>
   s >= 9 ? { cls: 'bg-rose-50 text-rose-700 border-rose-200', dot: '#e11d48', label: `CRITICAL ${s}` } :
@@ -34,7 +81,9 @@ function PublicSourceSearch({ onImportSourceItem }) {
   const [sectorId, setSectorId] = useState('');
   const [statuses, setStatuses] = useState({});
   const [items, setItems] = useState([]);
+  const [sourceStatus, setSourceStatus] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [searchComplete, setSearchComplete] = useState(false);
   const [searchError, setSearchError] = useState('');
   const [itemActions, setItemActions] = useState({});
 
@@ -50,15 +99,23 @@ function PublicSourceSearch({ onImportSourceItem }) {
   const handleSearch = async (event) => {
     event.preventDefault();
     setSearching(true);
+    setSearchComplete(false);
     setSearchError('');
     setItems([]);
+    setSourceStatus([]);
     try {
       const result = await api.searchPublicSource(source, query);
       setItems(result.items || []);
+      setSourceStatus(result.source_status || [{
+        source,
+        count: result.count || 0,
+        source_mode: result.source_mode || 'live',
+      }]);
     } catch (error) {
       setSearchError(error.message);
     } finally {
       setSearching(false);
+      setSearchComplete(true);
     }
   };
 
@@ -91,7 +148,13 @@ function PublicSourceSearch({ onImportSourceItem }) {
 
   const selectedStatus = statuses[source];
   const selectedSector = taxonomy.find(sector => sector.id === sectorId);
-  const sourceAvailable = selectedStatus?.configured &&
+  const sourceConnected = source === 'all' || Boolean(selectedStatus?.configured);
+  const sourceStatusLabel = source === 'all'
+    ? 'Provider status shown per result'
+    : selectedStatus?.status || (selectedStatus?.configured ? 'Connected' : 'Not configured');
+  const sourceAvailable = source === 'all'
+    ? Object.values(statuses).some(status => status.configured)
+    : selectedStatus?.configured &&
     (source !== 'youtube' || selectedStatus.searches_remaining > 0);
 
   return (
@@ -106,8 +169,8 @@ function PublicSourceSearch({ onImportSourceItem }) {
         <details className="relative self-start md:self-auto md:min-w-52 rounded-lg border border-zinc-800 bg-zinc-900">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-semibold text-amber-400">
             <span className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${selectedStatus?.configured ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-              {selectedStatus?.configured ? 'Source connected' : 'Source status'}
+              <span className={`h-2 w-2 rounded-full ${sourceConnected ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              {source === 'all' ? 'Multiple sources' : selectedStatus?.configured ? 'Source connected' : 'Source status'}
             </span>
             {source === 'youtube' && selectedStatus?.configured && (
               <span className="font-mono text-amber-200">{selectedStatus.searches_remaining}/{selectedStatus.daily_search_limit} left</span>
@@ -115,9 +178,9 @@ function PublicSourceSearch({ onImportSourceItem }) {
           </summary>
           <div className="absolute right-0 top-full z-20 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-800">{selectedStatus?.configured ? 'Search provider' : 'Setup required'}</span>
-              <span className={selectedStatus?.configured ? 'text-emerald-700' : 'text-amber-700'}>
-                {selectedStatus?.status || (selectedStatus?.configured ? 'Connected' : 'Not configured')}
+              <span className="font-semibold text-slate-800">{source === 'all' ? 'Supported public sources' : selectedStatus?.configured ? 'Search provider' : 'Setup required'}</span>
+              <span className={sourceConnected ? 'text-emerald-700' : 'text-amber-700'}>
+                {sourceStatusLabel}
               </span>
             </div>
             {source === 'youtube' && selectedStatus?.configured && (
@@ -149,6 +212,7 @@ function PublicSourceSearch({ onImportSourceItem }) {
 
       <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-[100px_125px_minmax(0,1fr)_auto] gap-2">
         <select value={source} onChange={event => setSource(event.target.value)} className="select-field min-w-0 w-full px-2">
+          <option value="all">All supported sources</option>
           <option value="google-news">Google News</option>
           <option value="reddit">Reddit</option>
           <option value="youtube">YouTube</option>
@@ -195,15 +259,36 @@ function PublicSourceSearch({ onImportSourceItem }) {
       {source === 'youtube' && selectedStatus?.searches_remaining === 0 && (
         <p role="status" className="mt-2 text-xs text-amber-800">YouTube’s daily safety quota is reached. Search again tomorrow.</p>
       )}
+      <p className="mt-2 text-xs text-slate-500">
+        Hashtag and keyword search covers Google News, Reddit, and YouTube public results; it cannot search every website or private social post.
+      </p>
       {searchError && <p role="alert" className="mt-2 text-sm text-rose-700">{searchError}</p>}
     </section>
-    {(items.length > 0 || (searching && !searchError)) && (
+    {(items.length > 0 || searching || searchComplete) && (
       <section className="card p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div className="text-sm font-bold text-slate-800">Public Search Results</div>
           {items.length > 0 && <span className="text-xs text-slate-600">{items.length} results</span>}
         </div>
         {searching && items.length === 0 && <p className="text-sm text-slate-600">Searching public sources…</p>}
+        {sourceStatus.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {sourceStatus.map(status => (
+              <span key={status.source} className={`rounded-full border px-2.5 py-1 text-xs ${
+                status.error ? 'border-rose-200 bg-rose-50 text-rose-800' :
+                  status.source_mode === 'curated-demo' ? 'border-amber-200 bg-amber-50 text-amber-800' :
+                    'border-emerald-200 bg-emerald-50 text-emerald-800'
+              }`}>
+                {status.source}: {status.error ? status.error : `${status.count} found${status.source_mode === 'curated-demo' ? ' · demo examples only' : ''}`}
+              </span>
+            ))}
+          </div>
+        )}
+        {searchComplete && !searching && items.length === 0 && (
+          <p className="text-sm text-slate-600">
+            No live matching posts were returned. Try another hashtag or keyword, or check the provider status above.
+          </p>
+        )}
         {items.length > 0 && (
           <div className="flex flex-col gap-3">
           {items.map(item => {
@@ -231,6 +316,7 @@ function PublicSourceSearch({ onImportSourceItem }) {
                       <div className="min-w-0 flex-1">
                         <div className="mb-1.5 flex flex-wrap items-center gap-2">
                           <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${sourceStyle}`}>{item.source}</span>
+                          {item.is_demo && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800">Demo example · not live</span>}
                           {item.subreddit && <span className="text-xs font-semibold text-slate-700">r/{item.subreddit}</span>}
                           <span className="text-xs font-semibold text-slate-800">{item.author}</span>
                           {item.published_at && <span className="text-xs text-slate-600">{formatDistanceToNow(item.published_at)}</span>}
@@ -249,10 +335,10 @@ function PublicSourceSearch({ onImportSourceItem }) {
                     </div>
                   </div>
                   <button type="button" onClick={() => handleImport(item)}
-                    disabled={!item.url || action?.state === 'loading' || action?.state === 'saved'}
+                    disabled={item.is_demo || !item.url || action?.state === 'loading' || action?.state === 'saved'}
                     className="inline-flex items-center justify-center gap-1.5 self-start rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                     {action?.state === 'loading' ? <Loader2 size={12} className="animate-spin" /> : <Newspaper size={12} />}
-                    {action?.state === 'saved' ? (action.duplicate ? 'Already added' : 'Added to reports') : 'Analyze & Add'}
+                    {item.is_demo ? 'Demo only' : action?.state === 'saved' ? (action.duplicate ? 'Already added' : 'Added to reports') : 'Analyze & Add'}
                   </button>
                 </div>
                 {action?.state === 'saved' && (
@@ -376,6 +462,35 @@ function GrievanceCard({ g, onSelect, clusterCount }) {
 
 export default function OSINTSearch({ filters, onFilterChange, onReset, grievances, loading, onSelectGrievance, onImportSourceItem }) {
   const [viewMode, setViewMode] = useState('table');
+  const [loadedFeed, setLoadedFeed] = useState([]);
+  const [loadedFeedError, setLoadedFeedError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    api.getGrievances({})
+      .then(result => {
+        if (active) {
+          setLoadedFeed(current => {
+            const records = new Map(current.map(record => [record.id, record]));
+            for (const record of result.data || []) records.set(record.id, record);
+            return [...records.values()];
+          });
+        }
+      })
+      .catch(error => {
+        if (active) setLoadedFeedError(`Quick-filter counts unavailable: ${error.message}`);
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!grievances.length) return;
+    setLoadedFeed(current => {
+      const records = new Map(current.map(record => [record.id, record]));
+      for (const record of grievances) records.set(record.id, record);
+      return [...records.values()];
+    });
+  }, [grievances]);
 
   const clusterCounts = useMemo(() => {
     const m = {};
@@ -403,7 +518,7 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
           <div className="relative">
             <Hash size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" />
-            <input type="text" placeholder="#BPSC, #RCD_Bihar, #PatnaFloods"
+            <input type="text" placeholder="Filter loaded feed by keyword, topic, or #tag..."
               value={filters.hashtag} onChange={e => onFilterChange('hashtag', e.target.value)}
               className="input-field pl-8 focus:border-amber-500 focus:ring-amber-500/20" />
           </div>
@@ -439,20 +554,28 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
         {/* Quick chips */}
         <div className="flex gap-2 mt-3 flex-wrap items-center">
           <span className="text-xs text-slate-500 font-semibold">Quick Filters:</span>
-          {['#BPSC','#PatnaFloods','#RCD_Bihar','#PowerOutage','#WaterCrisis'].map(tag => (
-            <button key={tag}
-              onClick={() => onFilterChange('hashtag', filters.hashtag === tag ? '' : tag)}
+          {QUICK_FILTERS.map(filter => {
+            const active = normalizeFilterValue(filters.hashtag) === filter.key;
+            const count = getQuickFilterCount(loadedFeed, filter.terms);
+            return (
+            <button key={filter.key}
+              type="button"
+              onClick={() => onFilterChange('hashtag', active ? '' : filter.label)}
+              aria-pressed={active}
               className={`text-xs px-2.5 py-1 rounded-full border transition-all font-mono ${
-                filters.hashtag === tag
+                active
                   ? 'bg-zinc-950 border-zinc-800 text-amber-400 shadow-sm'
                   : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-zinc-900 hover:text-amber-400'
-              }`}>{tag}</button>
-          ))}
+              }`}>{filter.label} <span className="ml-1 opacity-70">({count})</span></button>
+          );})}
           <button onClick={() => onFilterChange('severity', filters.severity === '8' ? '' : '8')}
             className={`text-xs px-2.5 py-1 rounded-md border transition-all ${
               filters.severity === '8' ? 'bg-rose-600 border-rose-600 text-white' : 'border-slate-200 bg-white text-slate-700 hover:bg-rose-50 hover:border-rose-200'
             }`}>🔴 Critical Only</button>
         </div>
+        {loadedFeedError && (
+          <p role="status" className="mt-2 text-xs text-amber-800">{loadedFeedError}</p>
+        )}
       </div>
 
       {/* Result header */}
@@ -488,6 +611,13 @@ export default function OSINTSearch({ filters, onFilterChange, onReset, grievanc
           <Search size={36} className="text-slate-300 mb-3" />
           <div className="text-slate-500 font-medium">No matching grievances</div>
           <div className="text-slate-400 text-sm mt-1">Try changing your filters or reset them to see all reports.</div>
+          <button
+            type="button"
+            onClick={onReset}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+          >
+            <RotateCcw size={14} /> Reset Filters
+          </button>
         </div>
       ) : viewMode === 'table' ? (
         <div className="card overflow-hidden">

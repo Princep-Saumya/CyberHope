@@ -438,10 +438,25 @@ function ResolutionDetailModal({ grievance, onClose, onUpdate, onEscalate }) {
 }
 
 // ── COMPACT LIST CARD ROW ───────────────────────────────────────────────────
-function ResolutionRow({ g, onOpenModal, onEscalate }) {
+function ResolutionRow({ g, onOpenModal, onEscalate, onAssign }) {
+  const [assigning, setAssigning] = useState(false);
+  const [assignmentError, setAssignmentError] = useState('');
   const cfg = STATUS_CFG[g.status] || STATUS_CFG.Received;
   const sla = getSlaInfo(g);
   const isEscalated = g.status === 'Escalated to DM';
+
+  const assignToDepartment = async (event) => {
+    event.stopPropagation();
+    setAssigning(true);
+    setAssignmentError('');
+    try {
+      await onAssign(g.id, 'Assigned');
+    } catch (error) {
+      setAssignmentError(error.message);
+    } finally {
+      setAssigning(false);
+    }
+  };
 
   return (
     <div
@@ -495,6 +510,16 @@ function ResolutionRow({ g, onOpenModal, onEscalate }) {
       </div>
 
       <div className="flex items-center gap-2.5 flex-shrink-0">
+        {g.status === 'Received' && (
+          <button
+            type="button"
+            onClick={assignToDepartment}
+            disabled={assigning}
+            className="flex items-center gap-1 rounded-xl bg-blue-600 px-2.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-60"
+          >
+            <Building2 size={11} /> {assigning ? 'Assigning…' : `Assign to ${g.department?.split('(')[0]?.trim() || 'department'}`}
+          </button>
+        )}
         {sla?.overdue && !isEscalated && (
           <button
             onClick={e => {
@@ -506,6 +531,7 @@ function ResolutionRow({ g, onOpenModal, onEscalate }) {
             <Megaphone size={11} /> Escalate to DM
           </button>
         )}
+        {assignmentError && <span role="alert" className="text-xs text-rose-700">{assignmentError}</span>}
         <div className="flex items-center gap-1 text-xs font-semibold text-blue-600 group-hover:text-blue-800 transition-colors">
           <span>View Details</span>
           <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
@@ -551,6 +577,9 @@ export default function ResolutionPortal({ grievances, onUpdateStatus, onEscalat
         <div>
           <div className="text-base font-bold text-slate-800">Complaint Resolution Tracker</div>
           <div className="text-xs text-slate-500">{grievances.length} total complaints across Bihar districts</div>
+          <div className="mt-1 text-xs text-amber-800">
+            Verify the source and AI-suggested department before assigning. Assignment is recorded internally; this app does not dispatch externally.
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select
@@ -606,6 +635,7 @@ export default function ResolutionPortal({ grievances, onUpdateStatus, onEscalat
                 g={g}
                 onOpenModal={setSelectedModalGrievance}
                 onEscalate={onEscalate}
+                onAssign={onUpdateStatus}
               />
             ))}
       </div>

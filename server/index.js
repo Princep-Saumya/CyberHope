@@ -3,6 +3,7 @@ const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const { Server } = require('socket.io');
+const { createRateLimit } = require('./middleware/rateLimit');
 
 const grievancesRouter = require('./routes/grievances');
 const sourcesRouter = require('./routes/sources');
@@ -29,6 +30,7 @@ io.on('connection', (socket) => {
 
 app.use(cors());
 app.use(express.json({ limit: '6mb' }));
+app.use('/api', createRateLimit({ windowMs: 60 * 1000, max: 300 }));
 
 // Attach io to request for route access
 app.use((req, _res, next) => {

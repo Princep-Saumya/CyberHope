@@ -42,6 +42,7 @@ let geminiQueue = Promise.resolve();
 let lastGeminiRequestAt = 0;
 let geminiRequestsPending = 0;
 let geminiLastFailure = null;
+let geminiCooldownUntil = 0;
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -66,14 +67,18 @@ function isRetryableGeminiError(error) {
 function recordGeminiFailure(error) {
   const statusCode = getGeminiStatusCode(error);
   const quotaLimited = /daily safety limit reached|exceeded your current quota|check your plan and billing/i.test(error?.message || '');
+  if (!quotaLimited && [429, 500, 502, 503, 504].includes(statusCode)) {
+    geminiCooldownUntil = Date.now() + 60 * 1000;
+  }
   geminiLastFailure = {
     status: quotaLimited ? 'quota-limited' : statusCode === 429 ? 'rate-limited' : 'unavailable',
     reason: quotaLimited
       ? 'Google Gemini reports that this project has exceeded its available quota or plan limit.'
       : statusCode === 429
-        ? 'Google Gemini rate-limited the request; triage is using the heuristic fallback.'
-        : 'The Gemini request or response failed; triage is using the heuristic fallback.',
+        ? 'Google Gemini rate-limited the request; requests are paused for 60 seconds before retrying.'
+        : 'The Gemini request or response failed; requests are paused for 60 seconds before retrying.',
     last_failure_at: new Date().toISOString(),
+    retry_at: geminiCooldownUntil > Date.now() ? new Date(geminiCooldownUntil).toISOString() : null,
   };
 }
 
@@ -129,6 +134,13 @@ async function analyzeImage(image) {
       media_analysis_status: 'unavailable',
       media_observation: null,
       media_analysis_reason: geminiLastFailure.reason,
+    };
+  }
+  if (geminiCooldownUntil > Date.now()) {
+    return {
+      media_analysis_status: 'unavailable',
+      media_observation: null,
+      media_analysis_reason: 'Gemini is temporarily unavailable; retry after the provider cooldown.',
     };
   }
 
@@ -311,7 +323,7 @@ function heuristicFallback(postText, imageOcrText = '') {
 // ─── Text Classification (Groq primary, Gemini fallback) ─────────────────────
 
 async function analyzeTextWithGemini(prompt) {
-  if (!process.env.GEMINI_API_KEY || geminiLastFailure?.status === 'quota-limited') {
+  if (!process.env.GEMINI_API_KEY || geminiLastFailure?.status === 'quota-limited' || geminiCooldownUntil > Date.now()) {
     return null;
   }
 

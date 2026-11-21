@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from '../utils/dateUtils';
-import { AlertTriangle, CheckCircle2, Copy, ExternalLink, HelpCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, HelpCircle } from 'lucide-react';
 import { isFlaggedSuspicious, isVerifiedGenuine } from '../utils/verification';
 
 const PLATFORM_COLORS = {
@@ -50,13 +50,13 @@ function AuthBadge({ flag }) {
 export default function GrievanceCard({ grievance, isSelected, onClick, clusterCount }) {
   const {
     id, platform, author_handle, timestamp, post_text,
-    location_tagged, hashtags, department, category,
-    severity_score, authenticity_risk_score, authenticity_flag,
-    status, duplicate_cluster_id, image_url,
+    location_tagged, hashtags, department,
+    severity_score, authenticity_flag, status, image_url,
   } = grievance;
 
-  const platformStyle = PLATFORM_COLORS[platform] || 'bg-gray-800 text-gray-300 border-gray-700';
-  const platformIcon = PLATFORM_ICONS[platform] || '◎';
+  const platformName = typeof platform === 'string' && platform.trim() ? platform : 'Unknown';
+  const platformStyle = PLATFORM_COLORS[platformName] || 'bg-gray-800 text-gray-300 border-gray-700';
+  const platformIcon = PLATFORM_ICONS[platformName] || '◎';
 
   const statusColor = {
     Received: 'text-gray-400 bg-gray-800',
@@ -82,7 +82,7 @@ export default function GrievanceCard({ grievance, isSelected, onClick, clusterC
       {/* Header row */}
       <div className="flex items-start gap-2 mb-2">
         <span className={`badge border text-xs font-bold ${platformStyle} flex-shrink-0`}>
-          {platformIcon} {platform.split(' ')[0]}
+          {platformIcon} {platformName.split(' ')[0]}
         </span>
         <span className="text-gray-400 text-xs truncate flex-1">{author_handle}</span>
         <span className="text-gray-600 text-xs flex-shrink-0 font-mono">
@@ -99,7 +99,7 @@ export default function GrievanceCard({ grievance, isSelected, onClick, clusterC
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             onError={e => { e.target.style.display = 'none'; }}
           />
-          {platform === 'YouTube' && (
+          {platformName === 'YouTube' && (
             <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 text-[9px] font-bold text-white bg-red-600/90 rounded shadow">
               ▶ VIDEO
             </span>

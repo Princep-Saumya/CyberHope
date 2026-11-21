@@ -10,6 +10,7 @@ let groqQueue = Promise.resolve();
 let lastGroqRequestAt = 0;
 let groqRequestsPending = 0;
 let groqLastFailure = null;
+let groqCooldownUntil = 0;
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -29,6 +30,7 @@ function getGroqStatus() {
       : groqLastFailure?.status || 'ready',
     reason: groqLastFailure?.reason || (!configured ? 'GROQ_API_KEY not configured in server/.env' : null),
     last_failure_at: groqLastFailure?.last_failure_at || null,
+    next_retry_at: groqCooldownUntil > Date.now() ? new Date(groqCooldownUntil).toISOString() : null,
     daily_request_limit: GROQ_DAILY_REQUEST_LIMIT,
     requests_today: getDailyUsage('groq'),
     requests_remaining: Math.max(0, GROQ_DAILY_REQUEST_LIMIT - getDailyUsage('groq')),
@@ -44,7 +46,32 @@ function recordFailure(status, reason) {
   };
 }
 
+function getRetryDelayMs(error, response) {
+  const retryAfter = response?.headers?.get('retry-after');
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds)) return Math.min(seconds * 1000, 24 * 60 * 60 * 1000);
+    const retryAt = Date.parse(retryAfter);
+    if (Number.isFinite(retryAt)) return Math.min(Math.max(1000, retryAt - Date.now()), 24 * 60 * 60 * 1000);
+  }
+
+  const match = /try again in\s+(?:(\d+(?:\.\d+)?)m)?\s*(\d+(?:\.\d+)?)s/i.exec(error.message || '');
+  if (match) {
+    const minutes = Number(match[1] || 0);
+    const seconds = Number(match[2] || 0);
+    return Math.min((minutes * 60 + seconds) * 1000, 24 * 60 * 60 * 1000);
+  }
+  return 60 * 1000;
+}
+
 async function performRequest(prompt) {
+  if (groqCooldownUntil > Date.now()) {
+    const error = new Error('Groq is temporarily rate-limited; using the configured fallback.');
+    error.status = 429;
+    error.retryAfterMs = groqCooldownUntil - Date.now();
+    throw error;
+  }
+
   const apiKey = getApiKey();
   if (!apiKey) {
     const error = new Error('Groq API key is not configured.');
@@ -88,6 +115,7 @@ async function performRequest(prompt) {
         const error = new Error(`Groq returned HTTP ${response.status}: ${providerMessage}`);
         error.status = response.status;
         error.quotaExhausted = /quota|daily limit|billing|credits/i.test(providerMessage);
+        if (response.status === 429) error.retryAfterMs = getRetryDelayMs(error, response);
         throw error;
       }
 
@@ -97,6 +125,7 @@ async function performRequest(prompt) {
       }
 
       groqLastFailure = null;
+      groqCooldownUntil = 0;
       return { content, model };
     } catch (error) {
       const quotaExhausted = error.quotaExhausted
@@ -106,7 +135,13 @@ async function performRequest(prompt) {
         throw error;
       }
 
-      const retryable = error.status === 429 || error.status >= 500 || error.name === 'TimeoutError';
+      if (error.status === 429) {
+        groqCooldownUntil = Date.now() + (error.retryAfterMs || 60 * 1000);
+        recordFailure('rate-limited', 'Groq is rate-limited; requests are paused until the provider retry window expires.');
+        throw error;
+      }
+
+      const retryable = error.status >= 500 || error.name === 'TimeoutError';
       if (!retryable || attempt === GROQ_MAX_ATTEMPTS - 1) {
         recordFailure(
           error.status === 429 ? 'rate-limited' : 'unavailable',

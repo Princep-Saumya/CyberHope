@@ -7,23 +7,30 @@ const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
 const { analyzePost, generateOfficialResponse } = require('../services/geminiService');
-const { getMasterTickets } = require('../utils/clustering');
+const { getMasterTickets, hasUsableLocation } = require('../utils/clustering');
+const { getBiharDistricts } = require('../utils/biharGeoResolver');
 const {
   getStore,
   getGrievance,
+  findDuplicateGrievance,
   fetchGrievances,
   clearStore,
   addGrievance,
   updateGrievanceStatus,
+  assignGrievanceLocation,
   recordAcknowledgment,
   updateGrievanceAnalysis,
   recordVerification,
   calcStats,
 } = require('../services/storeService');
 const { getPollerStatus, triggerManualPoll } = require('../services/realTimePoller');
+const { startReanalysisJob, getReanalysisJob } = require('../services/reanalysisJobService');
+const { createRateLimit } = require('../middleware/rateLimit');
 
 const ALLOWED_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const aiRequestLimit = createRateLimit({ windowMs: 60 * 1000, max: 12 });
+const feedPollLimit = createRateLimit({ windowMs: 60 * 1000, max: 5 });
 
 function getImagePayload(imageData, imageMimeType) {
   if (imageData === undefined && imageMimeType === undefined) return null;
@@ -64,7 +71,7 @@ router.get('/realtime/status', (_req, res) => {
   res.json(getPollerStatus());
 });
 
-router.post('/realtime/poll-now', async (_req, res) => {
+router.post('/realtime/poll-now', feedPollLimit, async (_req, res) => {
   try {
     const status = await triggerManualPoll();
     res.json({ success: true, message: 'Poll cycle triggered', status });
@@ -81,32 +88,19 @@ router.post('/realtime/clear', (req, res) => {
   res.json({ success: true, message: 'All demo and existing records deleted. Store is completely clean.' });
 });
 
-router.post('/realtime/reanalyze-all', async (req, res) => {
+router.post('/realtime/reanalyze-all', aiRequestLimit, (req, res) => {
   try {
-    const records = getStore();
-    const results = [];
-    for (const g of records) {
-      try {
-        const analysis = await analyzePost(g.post_text, g.image_ocr_text || '');
-        const updated = updateGrievanceAnalysis(g.id, analysis);
-        if (updated) results.push(updated);
-      } catch (err) {
-        console.warn(`[BatchAudit] Failed for ${g.id}:`, err.message);
-      }
-    }
-    const updatedStats = calcStats();
-    if (req.io) {
-      req.io.emit('stats_updated', { stats: updatedStats });
-    }
-    res.json({
-      success: true,
-      reanalyzed_count: results.length,
-      total: records.length,
-      stats: updatedStats,
-    });
+    const job = startReanalysisJob(req.io);
+    res.status(202).json({ success: true, job });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   }
+});
+
+router.get('/realtime/reanalyze-all/:jobId', (req, res) => {
+  const job = getReanalysisJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Batch re-analysis job not found.' });
+  res.json({ job });
 });
 
 // ─── Grievance CRUD Endpoints ─────────────────────────────────────────────────
@@ -143,6 +137,24 @@ router.patch('/grievances/:id/status', (req, res) => {
   res.json({ success: true, record: updated });
 });
 
+router.patch('/grievances/:id/location', (req, res) => {
+  const { district, landmark = '' } = req.body || {};
+  const validDistricts = getBiharDistricts();
+  if (typeof district !== 'string' || !validDistricts.includes(district)) {
+    return res.status(400).json({ error: `district must be one of the 38 Bihar districts.` });
+  }
+  if (typeof landmark !== 'string' || landmark.trim().length > 120) {
+    return res.status(400).json({ error: 'landmark must be 120 characters or fewer.' });
+  }
+
+  const updated = assignGrievanceLocation(req.params.id, district, landmark.trim());
+  if (!updated) return res.status(404).json({ error: 'Grievance not found' });
+  if (req.io) {
+    req.io.emit('location_assigned', { record: updated, stats: calcStats() });
+  }
+  res.json({ success: true, record: updated });
+});
+
 // POST /api/grievances/:id/acknowledgment — record an acknowledgment draft locally
 router.post('/grievances/:id/acknowledgment', (req, res) => {
   const { message } = req.body;
@@ -160,7 +172,7 @@ router.post('/grievances/:id/acknowledgment', (req, res) => {
 });
 
 // POST /api/analyze — Groq text triage with Gemini fallback and optional Gemini image analysis
-router.post('/analyze', async (req, res) => {
+router.post('/analyze', aiRequestLimit, async (req, res) => {
   const { post_text, image_ocr_text, image_data, image_mime_type, grievance_id } = req.body;
 
   if (typeof post_text !== 'string' || !post_text.trim() || post_text.length > 4000) {
@@ -187,8 +199,28 @@ router.post('/analyze', async (req, res) => {
 // GET /api/clusters — master ticket summaries
 router.get('/clusters', (_req, res) => {
   try {
-    const masters = getMasterTickets(getStore());
-    res.json({ count: masters.length, data: masters });
+    const records = getStore();
+    const recordsById = new Map(records.map(record => [record.id, record]));
+    const masters = getMasterTickets(records).map(cluster => ({
+      ...cluster,
+      members: cluster.member_ids
+        .map(id => recordsById.get(id))
+        .filter(Boolean),
+    }));
+    const unlocatedRecords = records
+      .filter(record => !record.is_reference_record && !record.is_demo
+        && record.is_civic_relevant !== false && !hasUsableLocation(record))
+      .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+    const excludedNonCivicCount = records
+      .filter(record => !record.is_reference_record && !record.is_demo
+        && record.is_civic_relevant === false).length;
+    res.json({
+      count: masters.length,
+      data: masters,
+      excluded_non_civic_count: excludedNonCivicCount,
+      unlocated_count: unlocatedRecords.length,
+      unlocated_records: unlocatedRecords,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -204,7 +236,7 @@ router.get('/stats', (_req, res) => {
 });
 
 // POST /api/grievances/import — public source import
-router.post('/grievances/import', async (req, res) => {
+router.post('/grievances/import', aiRequestLimit, async (req, res) => {
   const {
     source,
     source_id,
@@ -216,7 +248,11 @@ router.post('/grievances/import', async (req, res) => {
     thumbnail_url,
     image_data,
     image_mime_type,
+    is_demo,
   } = req.body;
+  if (is_demo === true) {
+    return res.status(400).json({ error: 'Curated demo examples cannot be imported as live reports.' });
+  }
   if (!['Google News', 'Reddit', 'YouTube', 'Public Forum'].includes(source)) {
     return res.status(400).json({ error: 'Invalid source provider.' });
   }
@@ -225,6 +261,15 @@ router.post('/grievances/import', async (req, res) => {
   }
   if (typeof source_url !== 'string') {
     return res.status(400).json({ error: 'source_url is required.' });
+  }
+
+  const duplicate = findDuplicateGrievance({
+    source_url,
+    source_id: typeof source_id === 'string' ? source_id : null,
+    platform: source,
+  });
+  if (duplicate) {
+    return res.json({ success: true, duplicate: true, record: duplicate });
   }
 
   try {
@@ -274,7 +319,7 @@ router.post('/grievances/import', async (req, res) => {
 });
 
 // POST /api/sample-reports — analyze and add a simulated or test report
-router.post('/sample-reports', async (req, res) => {
+router.post('/sample-reports', aiRequestLimit, async (req, res) => {
   const { post_text, platform, author_handle, location_tagged, coordinates, hashtags } = req.body;
   if (typeof post_text !== 'string' || !post_text.trim()) {
     return res.status(400).json({ error: 'post_text is required' });
@@ -327,7 +372,7 @@ router.post('/sample-reports', async (req, res) => {
 });
 
 // POST /api/official-response — generate official Bihar Govt response
-router.post('/official-response', async (req, res) => {
+router.post('/official-response', aiRequestLimit, async (req, res) => {
   const { grievance_id } = req.body;
   if (!grievance_id) return res.status(400).json({ error: 'grievance_id is required' });
 
@@ -354,9 +399,18 @@ router.patch('/grievances/:id/escalate', (req, res) => {
 // POST /api/grievances/:id/verify — officer human-in-the-loop verification verdict
 router.post('/grievances/:id/verify', (req, res) => {
   const { verdict, notes, officer_id } = req.body;
-  if (!verdict) return res.status(400).json({ error: 'verdict is required' });
+  const validVerdicts = ['Verified Genuine', 'Confirmed Fake', 'Under Field Investigation'];
+  if (!validVerdicts.includes(verdict)) {
+    return res.status(400).json({ error: `verdict must be one of: ${validVerdicts.join(', ')}` });
+  }
+  if (notes !== undefined && (typeof notes !== 'string' || notes.length > 2000)) {
+    return res.status(400).json({ error: 'notes must be a string of at most 2000 characters.' });
+  }
+  if (officer_id !== undefined && (typeof officer_id !== 'string' || officer_id.length > 100)) {
+    return res.status(400).json({ error: 'officer_id must be a string of at most 100 characters.' });
+  }
 
-  const record = recordVerification(req.params.id, { verdict, notes, officer_id });
+  const record = recordVerification(req.params.id, { verdict, notes: notes || '', officer_id });
   if (!record) return res.status(404).json({ error: 'Grievance not found' });
 
   if (req.io) {

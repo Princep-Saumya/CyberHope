@@ -1,7 +1,9 @@
 const express = require('express');
 const { getOsintTaxonomy, getSourceStatus, searchPublicSource } = require('../services/publicSources');
+const { createRateLimit } = require('../middleware/rateLimit');
 
 const router = express.Router();
+const sourceSearchLimit = createRateLimit({ windowMs: 60 * 1000, max: 20 });
 
 router.get('/sources/status', (_req, res) => {
   res.json({ sources: getSourceStatus() });
@@ -11,7 +13,7 @@ router.get('/sources/taxonomy', (_req, res) => {
   res.json({ count: getOsintTaxonomy().length, sectors: getOsintTaxonomy() });
 });
 
-router.get('/sources/search', async (req, res) => {
+router.get('/sources/search', sourceSearchLimit, async (req, res) => {
   try {
     const results = await searchPublicSource(req.query.source, req.query.q);
     res.json({ ...results, retrieved_at: new Date().toISOString() });

@@ -341,7 +341,8 @@ function getSearchTaxonomy() {
 function getPollQuery(index) {
   const sector = sectors[index % sectors.length];
   const termIndex = Math.floor(index / sectors.length) % sector.terms.length;
-  return { sector, query: sector.terms[termIndex] };
+  const tagIndex = Math.floor(index / sectors.length) % sector.quickTags.length;
+  return { sector, query: sector.quickTags[tagIndex] || sector.terms[termIndex] };
 }
 
 module.exports = {

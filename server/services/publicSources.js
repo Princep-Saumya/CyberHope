@@ -262,6 +262,7 @@ async function searchReddit(query) {
   redditNextRequestAt = Date.now() + REDDIT_MIN_INTERVAL_MS;
 
   let items = [];
+  let sourceMode = 'no-live-results';
 
   // 1. Try OAuth if configured
   try {
@@ -292,6 +293,7 @@ async function searchReddit(query) {
           url: data.permalink ? `https://www.reddit.com${data.permalink}` : null,
           thumbnail_url: data.thumbnail && data.thumbnail.startsWith('http') ? data.thumbnail : null,
         }));
+        if (items.length) sourceMode = 'live-oauth';
       }
     }
   } catch (oauthErr) {
@@ -333,6 +335,7 @@ async function searchReddit(query) {
             thumbnail_url: imgMatch ? imgMatch[1].replace(/&amp;/g, '&') : null,
           };
         });
+        if (items.length) sourceMode = 'live-rss';
       }
     } catch (rssErr) {
       console.warn(`[searchReddit] Live RSS search error (${terms}):`, rssErr.message);
@@ -345,11 +348,12 @@ async function searchReddit(query) {
     const words = qLower.split(/\s+/).filter(w => w.length > 2);
     items = BIHAR_REDDIT_SEED_POOL.filter(p => {
       const pText = (p.title + ' ' + p.text).toLowerCase();
-      return words.some(w => pText.includes(w)) || true;
-    }).slice(0, 4);
+      return words.some(w => pText.includes(w));
+    }).slice(0, 4).map(item => ({ ...item, is_demo: true }));
+    if (items.length) sourceMode = 'curated-demo';
   }
 
-  const result = { source: 'reddit', count: items.length, items };
+  const result = { source: 'reddit', source_mode: sourceMode, count: items.length, items };
   redditSearchCache.set(cacheKey, {
     result,
     expiresAt: Date.now() + 5 * 60 * 1000,
@@ -434,7 +438,37 @@ async function searchPublicSource(source, query) {
   if (source === 'google-news') return searchGoogleNews(query);
   if (source === 'reddit') return searchReddit(query);
   if (source === 'youtube') return searchYouTube(query);
-  const error = new Error('Source must be google-news, reddit, or youtube.');
+  if (source === 'all') {
+    const sources = ['google-news', 'reddit'];
+    const youtubeWaitMs = youtubeNextRequestAt - Date.now();
+    const youtubeSkipped = youtubeRequestsPending > 0 || youtubeWaitMs > 10000;
+    if (!youtubeSkipped) sources.push('youtube');
+    const settled = await Promise.allSettled(sources.map(provider => searchPublicSource(provider, query)));
+    const source_status = settled.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return {
+          source: sources[index],
+          count: result.value.count,
+          source_mode: result.value.source_mode || 'live',
+        };
+      }
+      return {
+        source: sources[index],
+        count: 0,
+        error: result.reason?.message || 'Search failed.',
+      };
+    });
+    if (youtubeSkipped) {
+      source_status.push({
+        source: 'youtube',
+        count: 0,
+        error: 'Skipped to respect YouTube request limits; search YouTube separately when ready.',
+      });
+    }
+    const items = settled.flatMap(result => result.status === 'fulfilled' ? result.value.items || [] : []);
+    return { source: 'all', count: items.length, items, source_status };
+  }
+  const error = new Error('Source must be all, google-news, reddit, or youtube.');
   error.status = 400;
   throw error;
 }

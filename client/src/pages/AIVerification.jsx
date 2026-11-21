@@ -910,7 +910,8 @@ export default function AIVerification({
   selectedGrievanceId = null,
   onReanalyze,
   onVerify,
-  onReanalyzeAll
+  onReanalyzeAll,
+  batchAuditProgress = null,
 }) {
   const [activeModalGrievance, setActiveModalGrievance] = useState(null);
   const [filterType, setFilterType] = useState('all');
@@ -987,7 +988,11 @@ export default function AIVerification({
     try {
       if (onReanalyzeAll) {
         const res = await onReanalyzeAll();
-        showToast('success', `Batch audit finished: ${res.reanalyzed_count || totalCount} posts evaluated.`);
+        const failed = res.failed_count ? ` ${res.failed_count} failed.` : '';
+        showToast(
+          res.failed_count ? 'error' : 'success',
+          `Batch audit finished: ${res.reanalyzed_count} posts evaluated.${failed}`
+        );
       }
     } catch (err) {
       showToast('error', `Batch audit failed: ${err.message}`);
@@ -1054,7 +1059,11 @@ export default function AIVerification({
             className="text-xs font-bold text-zinc-950 bg-amber-400 hover:bg-amber-300 active:scale-95 rounded-xl px-4 py-2.5 shadow-sm transition-all disabled:opacity-50 inline-flex items-center gap-1.5"
           >
             {isBatchAuditing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            <span>{isBatchAuditing ? 'Analyzing All...' : 'Re-analyze All with AI'}</span>
+            <span>
+              {isBatchAuditing
+                ? `Analyzing ${batchAuditProgress?.completed || 0}/${batchAuditProgress?.total || totalCount}...`
+                : 'Re-analyze All with AI'}
+            </span>
           </button>
 
           <button

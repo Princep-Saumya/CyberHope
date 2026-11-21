@@ -41,15 +41,16 @@ function AuthenticatedApp() {
 
   const {
     filters, updateFilter, resetFilters,
-    grievances, stats, clusters,
+    grievances, stats, clusters, unlocatedRecords, excludedNonCivicCount,
     loading, error,
     selectedGrievance, setSelectedGrievance,
-    updateGrievanceStatus, escalateGrievance, verifyGrievance, reanalyzeAllGrievances, addSampleReport, importPublicSourceItem, reanalyzeGrievance,
+    updateGrievanceStatus, assignGrievanceLocation, escalateGrievance, verifyGrievance, reanalyzeAllGrievances, addSampleReport, importPublicSourceItem, reanalyzeGrievance,
     getClusterSiblings,
     isSocketConnected,
     realtimeNotification,
     clearNotification,
     triggerRealtimePoll,
+    batchAuditProgress,
   } = useGrievances();
   const [simulatingPost, setSimulatingPost] = useState(false);
   const [actionNotice, setActionNotice] = useState(null);
@@ -84,10 +85,13 @@ function AuthenticatedApp() {
     setPollCooldown(true);
     cooldownTimers.current.poll = setTimeout(() => setPollCooldown(false), 6000);
     try {
-      await triggerRealtimePoll();
+      const result = await triggerRealtimePoll();
+      const scan = result.status?.last_poll;
       setActionNotice({
-        type: 'success',
-        text: 'Live public feeds scanned successfully across Bihar districts.',
+        type: scan?.ingested ? 'success' : 'info',
+        text: scan
+          ? `Hashtag scan ${scan.query}: found ${scan.found}, added ${scan.ingested}, already recorded ${scan.duplicates}${scan.demo_items_skipped ? `, ignored ${scan.demo_items_skipped} demo examples` : ''}.`
+          : 'Scan completed, but no scan summary was returned.',
       });
     } catch (e) {
       setActionNotice({ type: 'error', text: `Feed scan failed: ${e.message}` });
@@ -151,6 +155,11 @@ function AuthenticatedApp() {
     if (val && activePage !== 'osint') setActivePage('osint');
   }, [activePage, updateFilter]);
 
+  const handleResetFilters = useCallback(() => {
+    resetFilters();
+    setGlobalSearch('');
+  }, [resetFilters]);
+
   const handleNavigate = useCallback((page) => {
     setActivePage(page);
   }, []);
@@ -180,9 +189,9 @@ function AuthenticatedApp() {
       case 'dashboard':
         return <ExecutiveDashboard grievances={grievances} stats={stats} clusters={clusters} onSelectGrievance={setSelectedGrievance} highlightedReportId={highlightedReportId} />;
       case 'osint':
-        return <OSINTSearch filters={filters} onFilterChange={updateFilter} onReset={resetFilters} grievances={grievances} loading={loading} onSelectGrievance={setSelectedGrievance} onImportSourceItem={handleImportSourceItem} />;
+        return <OSINTSearch filters={filters} onFilterChange={updateFilter} onReset={handleResetFilters} grievances={grievances} loading={loading} onSelectGrievance={setSelectedGrievance} onImportSourceItem={handleImportSourceItem} />;
       case 'clusters':
-        return <ClusteringEngine clusters={clusters} grievances={grievances} onSelectGrievance={setSelectedGrievance} />;
+        return <ClusteringEngine clusters={clusters} unlocatedRecords={unlocatedRecords} totalRecords={stats?.total ?? grievances.length} excludedNonCivicCount={excludedNonCivicCount} onSelectGrievance={setSelectedGrievance} onAssignLocation={assignGrievanceLocation} />;
       case 'ai':
         return (
           <AIVerification
@@ -191,6 +200,7 @@ function AuthenticatedApp() {
             onReanalyze={reanalyzeGrievance}
             onVerify={verifyGrievance}
             onReanalyzeAll={reanalyzeAllGrievances}
+            batchAuditProgress={batchAuditProgress}
           />
         );
       case 'resolution':
@@ -249,10 +259,13 @@ function AuthenticatedApp() {
           role={actionNotice.type === 'error' ? 'alert' : 'status'}
           aria-live={actionNotice.type === 'error' ? 'assertive' : 'polite'}
           className={`fixed ${realtimeNotification ? 'bottom-64' : 'bottom-6'} right-6 z-50 flex w-[calc(100vw-3rem)] max-w-md items-start gap-3 rounded-xl border bg-white p-4 shadow-2xl ${
-            actionNotice.type === 'error' ? 'border-rose-200 text-rose-800' : 'border-emerald-200 text-emerald-800'
+            actionNotice.type === 'error' ? 'border-rose-200 text-rose-800' :
+              actionNotice.type === 'info' ? 'border-amber-200 text-amber-800' : 'border-emerald-200 text-emerald-800'
           }`}
         >
-          {actionNotice.type === 'error' ? <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-rose-600" /> : <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-emerald-600" />}
+          {actionNotice.type === 'error' ? <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-rose-600" />
+            : actionNotice.type === 'info' ? <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-amber-600" />
+              : <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-emerald-600" />}
           <div className="min-w-0 flex-1 text-sm">
             {actionNotice.title && <p className="font-semibold">{actionNotice.title}</p>}
             <p className={`${actionNotice.title ? 'mt-1 line-clamp-2' : ''}`}>

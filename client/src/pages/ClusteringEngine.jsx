@@ -1,19 +1,105 @@
-import { useState, Fragment } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import {
   GitMerge,
-  ChevronDown,
+  X,
   MapPin,
   Users,
   Copy,
   Layers,
   FileText,
-  Hash,
   ArrowRight,
-  Sparkles,
   Building2,
-  AlertTriangle,
-  ShieldCheck,
+  ExternalLink,
+  Clock3,
 } from 'lucide-react';
+import { formatDistanceToNow } from '../utils/dateUtils';
+
+const BIHAR_DISTRICTS = [
+  'Araria', 'Arwal', 'Aurangabad', 'Banka', 'Begusarai', 'Bhagalpur', 'Bhojpur',
+  'Buxar', 'Darbhanga', 'East Champaran', 'Gaya', 'Gopalganj', 'Jamui',
+  'Jehanabad', 'Kaimur', 'Katihar', 'Khagaria', 'Kishanganj', 'Lakhisarai',
+  'Madhepura', 'Madhubani', 'Munger', 'Muzaffarpur', 'Nalanda', 'Nawada',
+  'Patna', 'Purnia', 'Rohtas', 'Saharsa', 'Samastipur', 'Saran', 'Sheikhpura',
+  'Sheohar', 'Sitamarhi', 'Siwan', 'Supaul', 'Vaishali', 'West Champaran',
+];
+
+function UnlocatedRecord({ record, onSelect, onAssign }) {
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [district, setDistrict] = useState('');
+  const [landmark, setLandmark] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const submitLocation = async event => {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await onAssign(record.id, district, landmark);
+    } catch (assignmentError) {
+      setError(assignmentError.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <article className="rounded-lg border border-amber-200 bg-white/80 p-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => onSelect(record)}
+          className="min-w-0 flex-1 text-left"
+        >
+          <span className="block text-xs font-semibold text-slate-800">
+            {record.category || 'Needs classification'} · {record.location_tagged || 'Location unverified'}
+          </span>
+          <span className="mt-0.5 line-clamp-2 block text-xs text-slate-600">{record.post_text}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsAssigning(open => !open)}
+          className="shrink-0 text-xs font-semibold text-blue-700 hover:text-blue-900"
+          aria-expanded={isAssigning}
+        >
+          {isAssigning ? 'Cancel' : 'Assign Location'}
+        </button>
+      </div>
+      {isAssigning && (
+        <form onSubmit={submitLocation} className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <label className="sr-only" htmlFor={`district-${record.id}`}>District</label>
+          <select
+            id={`district-${record.id}`}
+            value={district}
+            onChange={event => setDistrict(event.target.value)}
+            required
+            className="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs"
+          >
+            <option value="">Select district</option>
+            {BIHAR_DISTRICTS.map(name => <option key={name} value={name}>{name}</option>)}
+          </select>
+          <label className="sr-only" htmlFor={`landmark-${record.id}`}>Landmark, ward, or locality (optional)</label>
+          <input
+            id={`landmark-${record.id}`}
+            value={landmark}
+            onChange={event => setLandmark(event.target.value)}
+            maxLength={120}
+            placeholder="Landmark, ward, or locality (optional)"
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+          />
+          <button
+            type="submit"
+            disabled={!district || saving}
+            className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save location'}
+          </button>
+          {error && <p role="alert" className="text-xs text-rose-700 sm:col-span-3">{error}</p>}
+        </form>
+      )}
+    </article>
+  );
+}
 
 const getSeverityBadge = (s) => {
   if (s >= 8) {
@@ -40,119 +126,8 @@ const getSeverityBadge = (s) => {
   };
 };
 
-function AISummaryCard({ summary, category, department, severity }) {
-  const [expanded, setExpanded] = useState(false);
-  if (!summary) return null;
-
-  const isLong = summary.length > 180;
-  const displayText = !expanded && isLong ? `${summary.slice(0, 175)}...` : summary;
-
-  const riskBadge =
-    severity >= 8 ? (
-      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-rose-100/90 text-rose-800 border border-rose-200 px-2 py-0.5 rounded-md">
-        <AlertTriangle size={11} className="text-rose-600" /> High Safety Risk
-      </span>
-    ) : severity >= 6 ? (
-      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-100/90 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md">
-        <AlertTriangle size={11} className="text-amber-600" /> Moderate Risk
-      </span>
-    ) : (
-      <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-100/90 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md">
-        <ShieldCheck size={11} className="text-emerald-600" /> Low Risk
-      </span>
-    );
-
-  return (
-    <div className="mt-3.5 p-3.5 rounded-xl bg-violet-50/70 border border-violet-200/80 shadow-2xs">
-      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-violet-900 tracking-wide uppercase">
-          <Sparkles size={14} className="text-violet-600" />
-          <span>AI Master Summary</span>
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {riskBadge}
-          {category && (
-            <span className="text-[11px] font-medium text-violet-700 bg-violet-100/70 border border-violet-200/70 px-2 py-0.5 rounded-md hidden sm:inline-block">
-              {category}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <p className="text-xs text-slate-700 leading-relaxed font-normal">
-        {displayText}
-      </p>
-
-      {isLong && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded((prev) => !prev);
-          }}
-          className="mt-2 text-[11px] font-semibold text-violet-700 hover:text-violet-900 hover:underline flex items-center gap-1 cursor-pointer"
-        >
-          {expanded ? 'Show less' : 'Read more'}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function MemberCard({ g, isRep }) {
-  const sv = getSeverityBadge(g.severity_score);
-  return (
-    <div
-      className={`p-3 rounded-xl border transition-all duration-150 ${
-        isRep
-          ? 'bg-blue-50/40 border-blue-200/90 shadow-2xs ring-1 ring-blue-500/10'
-          : 'bg-white border-slate-200/80 hover:border-slate-300 hover:bg-slate-50/50 shadow-2xs'
-      }`}
-    >
-      <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          {isRep && (
-            <span className="text-[10px] font-bold text-blue-700 bg-blue-100/90 border border-blue-200 px-2 py-0.5 rounded-md tracking-wider flex-shrink-0">
-              LEAD
-            </span>
-          )}
-          <span className="text-xs font-bold text-slate-800 truncate">{g.author_handle}</span>
-          <span className="text-[11px] text-slate-500 bg-slate-100 border border-slate-200/70 px-1.5 py-0.5 rounded-md">
-            {g.platform?.split(' ')[0] || 'Web'}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${sv.badge}`}>
-            {g.severity_score}/10
-          </span>
-          <span className="text-[11px] font-mono text-slate-400">{g.id}</span>
-        </div>
-      </div>
-
-      <p className="text-xs text-slate-600 leading-relaxed mb-2 line-clamp-2">{g.post_text}</p>
-
-      {g.hashtags && g.hashtags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {g.hashtags.slice(0, 4).map((h) => (
-            <span
-              key={h}
-              className="text-[10px] font-mono font-medium text-slate-500 bg-slate-50 border border-slate-200/80 px-1.5 py-0.5 rounded"
-            >
-              {h}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ClusterCard({ cluster, grievances, onSelectGrievance }) {
-  const [expanded, setExpanded] = useState(false);
-  const members = grievances.filter((g) => g.duplicate_cluster_id === cluster.cluster_id);
-  const lead = members[0];
-  const maxSev = cluster.max_severity;
+function ClusterCard({ cluster, onOpen }) {
+  const maxSev = cluster.priority_score ?? cluster.max_severity;
   const sev = getSeverityBadge(maxSev);
 
   const cleanDept = cluster.department?.split('(')[0]?.trim();
@@ -162,10 +137,14 @@ function ClusterCard({ cluster, grievances, onSelectGrievance }) {
       : cluster.hashtags || [];
 
   return (
-    <div className="card overflow-hidden transition-all duration-200 hover:shadow-md hover:border-slate-300">
+    <button
+      type="button"
+      className="card group w-full overflow-hidden p-4 text-left transition-all duration-200 hover:shadow-md hover:border-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+      onClick={() => onOpen(cluster)}
+      aria-label={`View ${cluster.member_count} posts merged into ${cluster.category}`}
+    >
       <div
-        className="group flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 cursor-pointer hover:bg-slate-50/70 transition-colors"
-        onClick={() => setExpanded((e) => !e)}
+        className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-slate-50/70 transition-colors"
       >
         <div className="flex items-start gap-3.5 min-w-0 flex-1">
           {/* Cluster Icon */}
@@ -191,12 +170,25 @@ function ClusterCard({ cluster, grievances, onSelectGrievance }) {
             <div className="flex items-center flex-wrap gap-x-3.5 gap-y-1 text-xs text-slate-500 mb-2">
               <span className="inline-flex items-center gap-1 text-slate-600 font-medium">
                 <MapPin size={12} className="text-emerald-600 shrink-0" />
-                {cluster.location}
+                {cluster.location || 'Local area verified'}
               </span>
               <span className="inline-flex items-center gap-1 text-slate-600 font-medium">
                 <Users size={12} className="text-blue-600 shrink-0" />
-                {cluster.member_count} reports merged
+                {cluster.member_count} distinct reports
               </span>
+              {cluster.unique_reporter_count > 0 && (
+                <span className="text-slate-500">{cluster.unique_reporter_count} identified reporters</span>
+              )}
+              {cluster.spam_flood_count > 0 && (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">
+                  {cluster.spam_flood_count} repetitive posts collapsed
+                </span>
+              )}
+              {cluster.is_chronic_hotspot && (
+                <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 font-semibold text-rose-800">
+                  Chronic hotspot
+                </span>
+              )}
               {cleanDept && (
                 <span className="inline-flex items-center gap-1 text-slate-500 truncate max-w-xs">
                   <Building2 size={12} className="text-slate-400 shrink-0" />
@@ -221,56 +213,138 @@ function ClusterCard({ cluster, grievances, onSelectGrievance }) {
           </div>
         </div>
 
-        {/* Right Section: Severity Score badge & Reports count & expand control */}
+        {/* Right Section: Severity Score badge and report count */}
         <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 w-full sm:w-auto flex-shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
           <div
             className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-bold ${sev.badge} shadow-2xs`}
           >
             <span className={`w-2 h-2 rounded-full ${sev.dot}`} />
-            <span>MAX {maxSev}/10</span>
+            <span>PRIORITY {maxSev}/10</span>
           </div>
 
           <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
             <Copy size={12} className="text-blue-500" />
-            <span>{cluster.member_count} citizen reports</span>
-            <span
-              className={`ml-1 p-0.5 rounded text-slate-400 group-hover:text-slate-700 transition-transform duration-200 ${
-                expanded ? 'rotate-180 text-blue-600' : ''
-              }`}
-            >
-              <ChevronDown size={14} />
-            </span>
+            <span>{cluster.member_count} distinct citizen reports</span>
+            <ExternalLink size={13} className="ml-1 text-slate-400 group-hover:text-blue-600" />
           </div>
         </div>
       </div>
+    </button>
+  );
+}
 
-      {expanded && (
-        <div className="border-t border-slate-100 p-4 bg-slate-50/60">
-          <div className="text-xs font-bold text-slate-600 mb-2.5 uppercase tracking-wider flex items-center justify-between">
-            <span>Source Lineage — {members.length} Posts</span>
-            <span className="text-[11px] font-normal text-slate-400 normal-case hidden sm:inline-block">
-              Click any report to view full details
-            </span>
+function ClusterMembersModal({ cluster, onClose, onSelectGrievance }) {
+  const members = cluster.members || [];
+
+  useEffect(() => {
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-slate-950/50 p-3 backdrop-blur-sm sm:p-6"
+      onClick={event => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cluster-members-title"
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Merged reports</p>
+            <h2 id="cluster-members-title" className="mt-1 text-lg font-bold text-slate-900">
+              {cluster.category || 'Related reports'}
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {cluster.cluster_id} · {members.length} posts in this group
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
+            aria-label="Close merged reports"
+          >
+            <X size={18} />
+          </button>
+        </header>
 
-          <div className="flex flex-col gap-2">
-            {members.map((m, i) => (
-              <div key={m.id} onClick={() => onSelectGrievance(m)} className="cursor-pointer">
-                <MemberCard g={m} isRep={i === 0} />
-              </div>
-            ))}
-          </div>
-
-          {lead?.ai_summary && (
-            <AISummaryCard
-              summary={lead.ai_summary}
-              category={cluster.category}
-              department={cleanDept}
-              severity={maxSev}
-            />
+        <div className="overflow-y-auto p-4 sm:p-5">
+          {members.length ? (
+            <div className="flex flex-col gap-3">
+              {members.map((member, index) => (
+                <article key={member.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      {index === 0 && (
+                        <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                          LEAD POST
+                        </span>
+                      )}
+                      <span className="text-xs font-semibold text-slate-800">
+                        {member.author_handle || 'Unknown author'}
+                      </span>
+                      <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+                        {member.platform || 'Unknown source'}
+                      </span>
+                      {member.spam_duplicate_of && (
+                        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                          Repetitive post collapsed
+                        </span>
+                      )}
+                      {member.timestamp && (
+                        <span className="text-[11px] text-slate-500">
+                          {formatDistanceToNow(member.timestamp)}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono text-[11px] text-slate-400">{member.id}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">
+                    {member.post_text || 'No post text available.'}
+                  </p>
+                  {member.hashtags?.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {member.hashtags.map(tag => (
+                        <span key={tag} className="rounded bg-blue-50 px-2 py-0.5 font-mono text-[11px] text-blue-700">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-2">
+                    <span className="text-[11px] text-slate-500">
+                      Severity {member.severity_score ?? '—'}/10 · {member.analysis_mode || 'Analysis mode unavailable'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onSelectGrievance(member);
+                      }}
+                      className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg border border-blue-200 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                    >
+                      Open report <ExternalLink size={12} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
+              This group has no report details available. Refresh the page and try again.
+            </p>
           )}
         </div>
-      )}
+      </section>
     </div>
   );
 }
@@ -278,52 +352,51 @@ function ClusterCard({ cluster, grievances, onSelectGrievance }) {
 
 const WORKFLOW_STEPS = [
   {
-    title: 'Location Match',
-    desc: (
-      <>Within <span className="font-semibold text-blue-600">500 m</span></>
-    ),
-    icon: MapPin,
-  },
-  {
-    title: 'Text Similarity',
-    desc: (
-      <><span className="font-semibold text-blue-600">≥ 70%</span></>
-    ),
+    title: 'Civic Filter',
+    desc: 'Exclude severity ≤2 with no civic terms',
     icon: FileText,
   },
   {
-    title: 'Hashtag Match',
-    desc: (
-      <><span className="font-semibold text-blue-600">2+</span> shared hashtags</>
-    ),
-    icon: Hash,
+    title: 'Location Score',
+    desc: '+50 same place · +35 same district',
+    icon: MapPin,
   },
   {
-    title: 'AI Clustering',
-    desc: 'Groups related reports',
-    icon: Sparkles,
+    title: 'Bilingual Issue',
+    desc: '+30 shared Hindi / English issue concept',
+    icon: FileText,
+  },
+  {
+    title: 'Creator & Time',
+    desc: '+20 same creator · within 72h · score ≥70',
+    icon: Clock3,
   },
   {
     title: 'Master Ticket',
-    desc: 'Unique cluster ID',
+    desc: 'Category may vary; prefer a specific department',
     icon: GitMerge,
-  },
-  {
-    title: 'Department',
-    desc: 'Assigned for action',
-    icon: Building2,
   },
 ];
 
-export default function ClusteringEngine({ clusters, grievances, onSelectGrievance }) {
-  const totalMerged = clusters.reduce((s, c) => s + c.member_count, 0);
+export default function ClusteringEngine({
+  clusters,
+  unlocatedRecords = [],
+  totalRecords = 0,
+  excludedNonCivicCount = 0,
+  onSelectGrievance,
+  onAssignLocation,
+}) {
+  const [selectedCluster, setSelectedCluster] = useState(null);
+  const totalMerged = clusters.reduce((sum, cluster) => sum + (cluster.raw_report_count || cluster.member_count), 0);
+  const standaloneCount = Math.max(0, totalRecords - excludedNonCivicCount - totalMerged);
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
           { label: 'Master Tickets',   value: clusters.length,                color: '#7c3aed', bg: '#8b5cf6' },
           { label: 'Posts Merged',     value: totalMerged,                    color: '#2563eb', bg: '#3b82f6' },
-          { label: 'Standalone Posts', value: grievances.length - totalMerged, color: '#64748b', bg: '#94a3b8' },
+          { label: 'Standalone Posts', value: standaloneCount, color: '#64748b', bg: '#94a3b8' },
+          { label: 'Non-civic Excluded', value: excludedNonCivicCount, color: '#b45309', bg: '#f59e0b' },
         ].map(({ label, value, color, bg }) => (
           <div key={label} className="kpi-card hover:scale-[1.02] transition-all">
             <div className="text-2xl font-bold font-mono" style={{ color }}>{value}</div>
@@ -339,7 +412,7 @@ export default function ClusteringEngine({ clusters, grievances, onSelectGrievan
         </div>
 
         <div className="overflow-x-auto pb-1 -mx-1 px-1">
-          <div className="min-w-[620px] md:min-w-0 grid grid-cols-[repeat(5,1fr_auto)_1fr] items-start">
+          <div className="min-w-[780px] md:min-w-0 grid grid-cols-[repeat(4,1fr_auto)_1fr] items-start">
             {WORKFLOW_STEPS.map((step, idx) => (
               <Fragment key={step.title}>
                 <div className="flex flex-col items-center text-center px-1">
@@ -363,7 +436,41 @@ export default function ClusteringEngine({ clusters, grievances, onSelectGrievan
             ))}
           </div>
         </div>
+        <p className="mt-3 text-center text-xs text-slate-500">
+          Different explicit districts never merge. Category labels may differ; bilingual issue matches use deterministic synonyms, not AI embeddings.
+        </p>
       </div>
+
+      <section className="card border border-amber-200 bg-amber-50/70 p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <MapPin size={18} className="mt-0.5 shrink-0 text-amber-700" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-bold text-amber-950">
+              Unlocated / Needs Geo-Triage ({unlocatedRecords.length})
+            </h2>
+            <p className="mt-1 text-xs text-amber-900">
+              English and Hindi place names are extracted first. Reports without a usable place stay here until an operator assigns a district and, optionally, a landmark or ward.
+            </p>
+            {unlocatedRecords.length > 0 && (
+              <div className="mt-3 flex flex-col gap-2">
+                {unlocatedRecords.slice(0, 5).map(record => (
+                  <UnlocatedRecord
+                    key={record.id}
+                    record={record}
+                    onSelect={onSelectGrievance}
+                    onAssign={onAssignLocation}
+                  />
+                ))}
+                {unlocatedRecords.length > 5 && (
+                  <p className="text-xs text-amber-900">
+                    Showing 5 of {unlocatedRecords.length}; use OSINT Search to filter and review the remaining reports.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       {clusters.length === 0 ? (
         <div className="card p-12 text-center">
@@ -373,9 +480,16 @@ export default function ClusteringEngine({ clusters, grievances, onSelectGrievan
       ) : (
         <div className="flex flex-col gap-3">
           {clusters.map(c => (
-            <ClusterCard key={c.cluster_id} cluster={c} grievances={grievances} onSelectGrievance={onSelectGrievance} />
+            <ClusterCard key={c.cluster_id} cluster={c} onOpen={setSelectedCluster} />
           ))}
         </div>
+      )}
+      {selectedCluster && (
+        <ClusterMembersModal
+          cluster={selectedCluster}
+          onClose={() => setSelectedCluster(null)}
+          onSelectGrievance={onSelectGrievance}
+        />
       )}
     </div>
   );
