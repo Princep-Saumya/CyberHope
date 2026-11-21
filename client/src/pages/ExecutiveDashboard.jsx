@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, useMap } from 'react-leaflet';
 import { AlertTriangle, TrendingUp, GitMerge, CheckCircle2, MapPin } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { isFlaggedSuspicious, isUnverified } from '../utils/verification';
+import { getLocationCoordinates } from '../utils/mapCoordinates';
 
 const BIHAR_CENTER = [25.35, 85.5];
 const BIHAR_ZOOM   = 7;
@@ -45,8 +46,8 @@ function MapIncidentLayer({ grievances, highlightedReportId, onSelectGrievance }
     const markers = new Map();
 
     grievances.forEach(grievance => {
-      const coordinates = grievance.coordinates;
-      if (!Number.isFinite(coordinates?.lat) || !Number.isFinite(coordinates?.lng)) return;
+      const mapLocation = getLocationCoordinates(grievance);
+      if (!mapLocation) return;
 
       const isSuspicious = isFlaggedSuspicious(grievance.authenticity_flag);
       const unverified = isUnverified(grievance.authenticity_flag);
@@ -54,7 +55,7 @@ function MapIncidentLayer({ grievances, highlightedReportId, onSelectGrievance }
       const severity = Number(grievance.severity_score) || 0;
       const color = isResolved ? '#16a34a' : isSuspicious ? '#be123c' : unverified ? '#f59e0b'
         : severity >= 8 ? '#dc2626' : severity >= 6 ? '#f97316' : '#2563eb';
-      const marker = L.marker([coordinates.lat, coordinates.lng], {
+      const marker = L.marker(mapLocation.coordinates, {
         icon: L.divIcon({
           html: `<span class="grievance-pin-dot" style="--pin-color:${color}"></span>`,
           className: 'grievance-map-pin',
@@ -68,9 +69,16 @@ function MapIncidentLayer({ grievances, highlightedReportId, onSelectGrievance }
       title.textContent = grievance.category || 'Public grievance';
       popup.append(title);
 
-      const location = document.createElement('div');
-      location.textContent = grievance.location_tagged || 'Location unverified';
-      popup.append(location);
+      const locationLabel = document.createElement('div');
+      locationLabel.textContent = mapLocation.label || grievance.location_tagged || 'Location unverified';
+      popup.append(locationLabel);
+      if (mapLocation.precision !== 'verified') {
+        const precision = document.createElement('div');
+        precision.textContent = mapLocation.precision === 'approximate-locality'
+          ? 'Approximate locality center · not an exact address'
+          : 'Approximate district placement · visualization only';
+        popup.append(precision);
+      }
 
       const detail = document.createElement('div');
       detail.textContent = `Severity ${severity}/10 · ${grievance.status || 'Received'}`;
@@ -217,6 +225,7 @@ export default function ExecutiveDashboard({ grievances, stats, clusters, onSele
                 <MapPin size={14} className="text-emerald-600" />Bihar Grievance Hotspot Map
               </div>
               <div className="section-sub mt-0.5">Click any marker to open complaint detail</div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Unlocated reports are omitted; approximate locality/district points are labeled and are not exact addresses.</div>
             </div>
           </div>
           <div className="relative isolate z-0 h-[420px] min-h-[350px] w-full rounded-xl overflow-hidden border border-slate-200">
