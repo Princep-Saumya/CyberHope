@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "description": "GrievancePulse AI — Bihar Cyber Hackathon 2026 · PS-04",
   "scripts": {
+    "start": "node server/index.js",
     "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "install:all": "npm install && npm install --prefix client && npm install --prefix server",
-    "build": "npm run build --prefix client"
+    "build": "npm run build --prefix client",
+    "build:all": "npm run install:all && npm run build"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

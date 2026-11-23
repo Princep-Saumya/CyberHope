@@ -105,6 +105,30 @@ function initStore() {
       throw new Error(`Could not load a grievance record from SQLite: ${error.message}`);
     }
   });
+
+  if (grievanceStore.length === 0) {
+    const seedFile = path.join(__dirname, '../data/seed_grievances.json');
+    if (fs.existsSync(seedFile)) {
+      try {
+        const raw = fs.readFileSync(seedFile, 'utf8');
+        const seedData = JSON.parse(raw);
+        if (Array.isArray(seedData) && seedData.length > 0) {
+          saveRecordsTransaction(seedData);
+          grievanceStore = seedData.map(record => {
+            if (Array.isArray(record.coordinates) && record.coordinates.length >= 2) {
+              record.coordinates = { lat: record.coordinates[0], lng: record.coordinates[1] };
+            }
+            if (record.source_url) {
+              record.source_url = sanitizeSourceUrl(record.source_url, record.platform);
+            }
+            return record;
+          });
+        }
+      } catch (err) {
+        console.warn('⚠️ Could not load seed_grievances.json:', err.message);
+      }
+    }
+  }
   const hasReddit = grievanceStore.some(g => g.platform === 'Reddit');
   if (!hasReddit) {
     const redditSeeds = [

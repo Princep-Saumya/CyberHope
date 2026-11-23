@@ -1,5 +1,7 @@
 require('dotenv').config();
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const { Server } = require('socket.io');
@@ -51,6 +53,18 @@ app.get('/api/health', (_req, res) => {
 // Main routes
 app.use('/api', grievancesRouter);
 app.use('/api', sourcesRouter);
+
+// Serve static frontend in production (or when client/dist exists)
+const clientDistPath = path.join(__dirname, '../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
 
 // Global error handler
 app.use((err, _req, res, _next) => {
